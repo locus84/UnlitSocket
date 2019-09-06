@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Net;
 using UnityEngine;
-using TcpNetworking;
+using UnlitSocket;
 using System;
 
 public class TestManager : MonoBehaviour
@@ -59,8 +59,8 @@ public class TestManager : MonoBehaviour
                 if(client.Status == ConnectionStatus.Connected)
                 {
                     var bytes = System.Text.Encoding.UTF8.GetBytes(defaultVal);
-                    var message = client.CreateMessage(new CustomMessage(bytes));
-                    client.Send(message);
+                    //var message = client.CreateMessage(new CustomMessage(bytes));
+                    //client.Send(message);
                 }
             }
         }

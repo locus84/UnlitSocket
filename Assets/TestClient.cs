@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 
-namespace TcpNetworking
+namespace UnlitSocket
 {
     public class Client
     {
@@ -97,8 +97,8 @@ namespace TcpNetworking
             try
             {
                 message.Retain();
-                var data = message.DataProvider.GetData();
-                message.Args.SetBuffer(data.Array, data.Offset, data.Count);
+                //var data = message.DataProvider.GetData();
+                //message.Args.SetBuffer(data.Array, data.Offset, data.Count);
                 bool isPending = m_Socket.SendAsync(message.Args);
                 if (!isPending) ProcessSend(null, message.Args);
             }
@@ -150,19 +150,6 @@ namespace TcpNetworking
 
             m_Socket.Close();
             m_Socket = null;
-        }
-
-        public Message CreateMessage(IDataProvider data)
-        {
-            Message message;
-            if (!m_MessagePool.TryDequeue(out message))
-            {
-                message = new Message(m_MessagePool);
-                m_Logger?.Debug("NewMessage");
-                message.Args.Completed += ProcessSend;
-            }
-            message.DataProvider = data;
-            return message;
         }
     }
 }

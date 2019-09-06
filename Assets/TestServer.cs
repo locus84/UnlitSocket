@@ -7,32 +7,32 @@ using System.Threading;
 using System.Net;
 using System.Collections.Concurrent;
 
-namespace TcpNetworking
+namespace UnlitSocket
 {
     public class Server
     {
-        private int m_numConnections;
-        private int m_receiveBufferSize;
-        BufferManager m_bufferManager;
-        Socket listenSocket;
-        SocketAsyncEventArgsPool m_readWritePool;
-        int m_totalBytesRead;
-        int m_numConnectedSockets;
+        private int m_MaxConnectionCount; //maximum connection
+        private int m_MaxMessageSize; //buffer size, can be varied
+        Socket m_ListenSocket;
+        int m_TotalBytesRead;
+        int m_CurrentConnectionCount;
         ILogReceiver m_Logger;
         public bool IsRunning { get; private set; } = false;
 
         public int Port { get; private set; }
 
-        List<AsyncUserToken> m_UserList = new List<AsyncUserToken>();
+        AsyncUserTokenPool m_TokenPool;
+        Dictionary<int, AsyncUserToken> m_ConnectionDic;
 
-        public Server(int numConnections, int receiveBufferSize)
+        public Server(int maxConnections, int maxMessageSize)
         {
-            m_totalBytesRead = 0;
-            m_numConnectedSockets = 0;
-            m_numConnections = numConnections;
-            m_receiveBufferSize = receiveBufferSize;
-            m_bufferManager = new BufferManager(receiveBufferSize * numConnections, receiveBufferSize);
-            m_readWritePool = new SocketAsyncEventArgsPool(numConnections);
+            m_TotalBytesRead = 0;
+            m_CurrentConnectionCount = 0;
+            m_MaxConnectionCount = maxConnections;
+            m_MaxMessageSize = maxMessageSize;
+
+            m_TokenPool = new AsyncUserTokenPool(maxConnections);
+            m_ConnectionDic = new Dictionary<int, AsyncUserToken>(maxConnections);
         }
 
         public void SetLogger(ILogReceiver logger) => m_Logger = logger;
@@ -40,20 +40,12 @@ namespace TcpNetworking
         public void Init()
         {
             //init buffer, use given value in initializer
-            m_bufferManager.InitBuffer();
-
-            for (int i = 0; i < m_numConnections; i++)
+            for (int i = 0; i < m_MaxConnectionCount; i++)
             {
-                //Pre-allocate a set of reusable SocketAsyncEventArgs
-                var eventArg = new SocketAsyncEventArgs();
-                eventArg.Completed += IO_Completed;
-                eventArg.UserToken = new AsyncUserToken();
-
-                // assign a byte buffer from the buffer pool to the SocketAsyncEventArg object
-                m_bufferManager.SetBuffer(eventArg);
-
-                // add SocketAsyncEventArg to the pool
-                m_readWritePool.Push(eventArg);
+                var token = new AsyncUserToken(i);
+                token.ReceiveArg.Completed += ProcessReceive;
+                m_ConnectionDic.Add(i, token);
+                m_TokenPool.Push(token);
             }
         }
 
@@ -62,15 +54,15 @@ namespace TcpNetworking
         public void Start(int port)
         {
             // create the socket which listens for incoming connections
-            listenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
-            listenSocket.DualMode = true;
-            listenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
-            listenSocket.Listen(1024);
+            m_ListenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+            m_ListenSocket.DualMode = true;
+            m_ListenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
+            m_ListenSocket.Listen(1024);
 
             var acceptEventArg = new SocketAsyncEventArgs();
             acceptEventArg.Completed += ProcessAccept;
 
-            StartAccept(listenSocket, acceptEventArg);
+            StartAccept(m_ListenSocket, acceptEventArg);
             IsRunning = true;
         }
 
@@ -87,34 +79,27 @@ namespace TcpNetworking
             if (e.SocketError == SocketError.Success)
             {
                 var socket = sender as Socket;
-                var currentNumber = Interlocked.Increment(ref m_numConnectedSockets);
+                var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
 
-                if (currentNumber > m_numConnections)
+                if (currentNumber > m_MaxConnectionCount)
                 {
                     //close bad accepted socket
                     if (e.AcceptSocket != null)
                         e.AcceptSocket.Disconnect(false);
-                    Interlocked.Decrement(ref m_numConnectedSockets);
+                    Interlocked.Decrement(ref m_CurrentConnectionCount);
                 }
                 else
                 {
-                    m_Logger?.Debug($"Client connected, Current Count : {currentNumber} - {socket.AddressFamily}");
+                    var token = m_TokenPool.Pop();
 
-                    SocketAsyncEventArgs readEventArgs = m_readWritePool.Pop();
-                    var userToken = readEventArgs.UserToken as AsyncUserToken;
-                    userToken.Socket = e.AcceptSocket;
-                    userToken.Socket.SendTimeout = 5000;
-                    userToken.Socket.NoDelay = true;
+                    m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber} - {socket.AddressFamily}");
 
-                    e.UserToken = userToken;
+                    token.Socket = e.AcceptSocket;
+                    token.Socket.SendTimeout = 5000;
+                    token.Socket.NoDelay = true;
 
-                    lock (m_UserList)
-                    {
-                        m_UserList.Add(userToken);
-                    }
-
-                    bool isPending = e.AcceptSocket.ReceiveAsync(readEventArgs);
-                    if (!isPending) ProcessReceive(readEventArgs);
+                    bool isPending = e.AcceptSocket.ReceiveAsync(token.ReceiveArg);
+                    if (!isPending) ProcessReceive(e.AcceptSocket, token.ReceiveArg);
                 }
 
                 e.AcceptSocket = null;
@@ -131,50 +116,34 @@ namespace TcpNetworking
             }
         }
 
-        void IO_Completed(object sender, SocketAsyncEventArgs e)
-        {
-            switch (e.LastOperation)
-            {
-                case SocketAsyncOperation.Receive:
-                    ProcessReceive(e);
-                    break;
-                case SocketAsyncOperation.Send:
-                    ProcessSend(e);
-                    break;
-                default:
-                    m_Logger?.Debug("Event is not send/receive");
-                    break;
-            }
-        }
-
-        public void Update()
-        {
-
-        }
-
         public void Stop()
         {
-            lock (m_UserList)
-            {
-                foreach (var user in m_UserList) user.Socket.Disconnect(false);
-            }
             IsRunning = false;
-            listenSocket?.Close();
+            m_ListenSocket?.Close();
         }
 
-        private void ProcessReceive(SocketAsyncEventArgs e)
+        private void ProcessReceive(object sender, SocketAsyncEventArgs e)
         {
             // check if the remote host closed the connection
-            AsyncUserToken token = (AsyncUserToken)e.UserToken;
             if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
             {
+                AsyncUserToken token = (AsyncUserToken)e.UserToken;
                 //increment the count of the total bytes receive by the server
-                Interlocked.Add(ref m_totalBytesRead, e.BytesTransferred);
-                m_Logger?.Debug($"Server ReceivedData Offset : {e.Offset} Count : {e.BytesTransferred}");
+                Interlocked.Add(ref m_TotalBytesRead, e.BytesTransferred);
+                m_Logger?.Debug($"Server ReceivedData Offset from client {token.ConnectionID} : {e.Offset} Count : {e.BytesTransferred}");
+
+                //this is initial length
+                if(e.Buffer.Length == 2)
+                {
+
+                }
+
+
+
                 //echo the data received back to the client
                 e.SetBuffer(e.Offset, e.BytesTransferred);
                 bool isPending = token.Socket.SendAsync(e);
-                if (!isPending) ProcessSend(e);
+                if (!isPending) ProcessSend(token.Socket, e);
             }
             else
             {
@@ -182,16 +151,16 @@ namespace TcpNetworking
             }
         }
 
-        private void ProcessSend(SocketAsyncEventArgs e)
+        private void ProcessSend(object sender, SocketAsyncEventArgs e)
         {
             if (e.SocketError == SocketError.Success)
             {
                 // done echoing data back to the client
                 AsyncUserToken token = (AsyncUserToken)e.UserToken;
                 // read the next block of data send from the client
-                e.SetBuffer(e.Offset, m_receiveBufferSize);
+                e.SetBuffer(e.Offset, m_MaxMessageSize);
                 bool isPending = token.Socket.ReceiveAsync(e);
-                if (!isPending) ProcessReceive(e);
+                if (!isPending) ProcessReceive(token.Socket, e);
             }
             else
             {
@@ -201,12 +170,7 @@ namespace TcpNetworking
 
         private void CloseClientSocket(SocketAsyncEventArgs e)
         {
-            AsyncUserToken token = e.UserToken as AsyncUserToken;
-
-            lock (m_UserList)
-            {
-                m_UserList.Remove(token);
-            }
+            AsyncUserToken token = (AsyncUserToken)e.UserToken;
 
             // close the socket associated with the client
             try
@@ -217,14 +181,12 @@ namespace TcpNetworking
             catch (Exception) { }
 
             token.Socket.Close();
-
-            // Free the SocketAsyncEventArg so they can be reused by another client
-            m_readWritePool.Push(e);
-
+            token.Clear();
+            var currentNumber = Interlocked.Decrement(ref m_CurrentConnectionCount);
+            m_Logger?.Debug($"client { token.ConnectionID } has been disconnected from the server. There are {currentNumber} clients connected to the server");
             // decrement the counter keeping track of the total number of clients connected to the server
-            var currentNumber = Interlocked.Decrement(ref m_numConnectedSockets);
 
-            m_Logger?.Debug($"A client has been disconnected from the server. There are {currentNumber} clients connected to the server");
+            m_TokenPool.Push(token);
         }
     }
 }
