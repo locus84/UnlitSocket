@@ -23,6 +23,26 @@ namespace UnlitSocket
 
         AsyncUserTokenPool m_TokenPool;
         Dictionary<int, AsyncUserToken> m_ConnectionDic;
+        ConcurrentQueue<ReceivedMessage> m_ReceivedMessages = new ConcurrentQueue<ReceivedMessage>();
+
+        public delegate void ConnectionStatusChangeDelegate(int connectionID);
+        public ConnectionStatusChangeDelegate OnConnected;
+        public ConnectionStatusChangeDelegate OnDisconnected;
+        public delegate void DataReceivedDelegate(int connectionID, Message message);
+        public DataReceivedDelegate OnDataReceived;
+
+        struct ReceivedMessage
+        {
+            public int ConnectionID;
+            public MessageType Type;
+            public Message MessageData;
+            public ReceivedMessage(int connectionID, MessageType type, Message message = null)
+            {
+                ConnectionID = connectionID;
+                Type = type;
+                MessageData = message;
+            }
+        }
 
         public Server(int maxConnections, int maxMessageSize)
         {
@@ -124,31 +144,41 @@ namespace UnlitSocket
 
         private void ProcessReceive(object sender, SocketAsyncEventArgs e)
         {
+            AsyncUserToken token = (AsyncUserToken)e.UserToken;
             // check if the remote host closed the connection
             if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
             {
-                AsyncUserToken token = (AsyncUserToken)e.UserToken;
                 //increment the count of the total bytes receive by the server
                 Interlocked.Add(ref m_TotalBytesRead, e.BytesTransferred);
                 m_Logger?.Debug($"Server ReceivedData Offset from client {token.ConnectionID} : {e.Offset} Count : {e.BytesTransferred}");
 
                 //this is initial length
-                if(e.Buffer.Length == 2)
+                //TODO have to check bytesTransferred
+                if(token.CurrentMessage == null)
                 {
-
+                    var size = MessageReader.ReadUInt16(token.ReceiveArg.Buffer);
+                    token.CurrentMessage = Message.Pop(size);
+                    token.CurrentMessage.BindToArgs(token.ReceiveArg, size);
+                }
+                else
+                {
+                    m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
+                    token.ClearMessage();
                 }
 
-
-
-                //echo the data received back to the client
-                e.SetBuffer(e.Offset, e.BytesTransferred);
                 bool isPending = token.Socket.SendAsync(e);
                 if (!isPending) ProcessSend(token.Socket, e);
             }
             else
             {
+                token.ClearMessage();
                 CloseClientSocket(e);
             }
+        }
+
+        public void Send(int connectionID, Message message)
+        {
+
         }
 
         private void ProcessSend(object sender, SocketAsyncEventArgs e)
@@ -181,12 +211,36 @@ namespace UnlitSocket
             catch (Exception) { }
 
             token.Socket.Close();
-            token.Clear();
+            m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Disconnected));
             var currentNumber = Interlocked.Decrement(ref m_CurrentConnectionCount);
             m_Logger?.Debug($"client { token.ConnectionID } has been disconnected from the server. There are {currentNumber} clients connected to the server");
             // decrement the counter keeping track of the total number of clients connected to the server
 
             m_TokenPool.Push(token);
+        }
+
+
+        public void Update()
+        {
+            ReceivedMessage receivedMessage;
+            while(m_ReceivedMessages.TryDequeue(out receivedMessage))
+            {
+                switch(receivedMessage.Type)
+                {
+                    case MessageType.Connected:
+                        OnConnected?.Invoke(receivedMessage.ConnectionID);
+                        break;
+                    case MessageType.Disconnected:
+                        OnDisconnected?.Invoke(receivedMessage.ConnectionID);
+                        break;
+                    case MessageType.Data:
+                        OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData);
+                        Message.Push(receivedMessage.MessageData);
+                        break;
+                    default:
+                        throw new Exception("Unknown MessageType");
+                }
+            }
         }
     }
 }

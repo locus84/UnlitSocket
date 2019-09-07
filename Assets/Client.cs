@@ -97,10 +97,12 @@ namespace UnlitSocket
             try
             {
                 message.Retain();
+
                 //var data = message.DataProvider.GetData();
                 //message.Args.SetBuffer(data.Array, data.Offset, data.Count);
-                bool isPending = m_Socket.SendAsync(message.Args);
-                if (!isPending) ProcessSend(null, message.Args);
+
+                //bool isPending = m_Socket.SendAsync(message.Args);
+                //if (!isPending) ProcessSend(null, message.Args);
             }
             catch
             {

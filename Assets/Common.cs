@@ -1,10 +1,7 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
-using System.Threading;
-using UnityEngine;
+using System.Runtime.InteropServices;
 
 namespace UnlitSocket
 {
@@ -15,43 +12,6 @@ namespace UnlitSocket
     {
         void Debug(string str);
         void Exception(string exception);
-    }
-
-    public partial class Message
-    {
-        ConcurrentQueue<Message> m_MessagePool = new ConcurrentQueue<Message>();
-
-        internal SocketAsyncEventArgs Args { get; private set; }
-
-        int m_RefCount = 0;
-
-        public int ConnectionID;
-        public ArraySegment<byte> Data;
-        public MessageType Type;
-
-        public Message()
-        {
-            Args = new SocketAsyncEventArgs();
-            Args.UserToken = this;
-        }
-
-        public void Retain()
-        {
-            Interlocked.Increment(ref m_RefCount);
-        }
-
-        public void Release()
-        {
-            if(Interlocked.Decrement(ref m_RefCount) == 0)
-            {
-                Recycle();
-            }
-        }
-
-        public void Recycle()
-        {
-            m_MessagePool?.Enqueue(this);
-        }
     }
 
     public class AsyncUserToken
@@ -71,10 +31,13 @@ namespace UnlitSocket
             ReceiveArg.SetBuffer(m_SizeReadArray, 0, 2);
         }
 
-        public void Clear()
+        public void ClearMessage()
         {
-            Socket = null;
-            ReceiveArg.SetBuffer(m_SizeReadArray, 0, 2);
+            if(CurrentMessage == null)
+            {
+                CurrentMessage = null;
+                ReceiveArg.SetBuffer(m_SizeReadArray, 0, 2);
+            }
         }
     }
 
@@ -108,6 +71,52 @@ namespace UnlitSocket
         {
             get { return m_pool.Count; }
         }
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct UIntFloat
+    {
+        [FieldOffset(0)]
+        public float floatValue;
+
+        [FieldOffset(0)]
+        public uint intValue;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct UIntDouble
+    {
+        [FieldOffset(0)]
+        public double doubleValue;
+
+        [FieldOffset(0)]
+        public ulong longValue;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct UIntDecimal
+    {
+        [FieldOffset(0)]
+        public ulong longValue1;
+
+        [FieldOffset(8)]
+        public ulong longValue2;
+
+        [FieldOffset(0)]
+        public decimal decimalValue;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct UIntGuid
+    {
+        [FieldOffset(0)]
+        public ulong longValue1;
+
+        [FieldOffset(8)]
+        public ulong longValue2;
+
+        [FieldOffset(0)]
+        public Guid guidValue;
     }
 }
 

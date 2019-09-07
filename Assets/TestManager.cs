@@ -29,25 +29,6 @@ public class TestManager : MonoBehaviour
         foreach (var client in m_Clients) client.Disconnect();
     }
 
-    public class CustomMessage : IDataProvider
-    {
-        ArraySegment<byte> m_Bytes;
-        public ArraySegment<byte> GetData()
-        {
-            return m_Bytes;
-        }
-
-        public CustomMessage(ArraySegment<byte> data)
-        {
-            m_Bytes = data;
-        }
-
-        public CustomMessage(byte[] data)
-        {
-            m_Bytes = new ArraySegment<byte>(data);
-        }
-    }
-
     string defaultVal = "Default";
     private void OnGUI()
     {
