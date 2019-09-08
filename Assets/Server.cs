@@ -50,9 +50,11 @@ namespace UnlitSocket
         {
             // create the socket which listens for incoming connections
             m_ListenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+            m_ListenSocket.NoDelay = true;
+            m_ListenSocket.SendTimeout = 5000;
             m_ListenSocket.DualMode = true;
             m_ListenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
-            m_ListenSocket.Listen(4096);
+            m_ListenSocket.Listen(100);
 
             var acceptEventArg = new SocketAsyncEventArgs();
             acceptEventArg.Completed += ProcessAccept;
