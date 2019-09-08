@@ -23,12 +23,11 @@ namespace UnlitSocket
 
         AsyncUserTokenPool m_TokenPool;
         Dictionary<int, AsyncUserToken> m_ConnectionDic;
+        ConcurrentBag<SocketAsyncEventArgs> m_SendArgsPool = new ConcurrentBag<SocketAsyncEventArgs>();
         ConcurrentQueue<ReceivedMessage> m_ReceivedMessages = new ConcurrentQueue<ReceivedMessage>();
 
-        public delegate void ConnectionStatusChangeDelegate(int connectionID);
         public ConnectionStatusChangeDelegate OnConnected;
         public ConnectionStatusChangeDelegate OnDisconnected;
-        public delegate void DataReceivedDelegate(int connectionID, Message message);
         public DataReceivedDelegate OnDataReceived;
 
         struct ReceivedMessage
@@ -111,7 +110,7 @@ namespace UnlitSocket
                 else
                 {
                     var token = m_TokenPool.Pop();
-
+                    token.IsConnected = true;
                     m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber} - {socket.AddressFamily}");
 
                     token.Socket = e.AcceptSocket;
@@ -158,7 +157,7 @@ namespace UnlitSocket
                 {
                     var size = MessageReader.ReadUInt16(token.ReceiveArg.Buffer);
                     token.CurrentMessage = Message.Pop(size);
-                    token.CurrentMessage.BindToArgs(token.ReceiveArg, size);
+                    token.CurrentMessage.BindToArgsReceive(token.ReceiveArg, size);
                 }
                 else
                 {
@@ -166,8 +165,8 @@ namespace UnlitSocket
                     token.ClearMessage();
                 }
 
-                bool isPending = token.Socket.SendAsync(e);
-                if (!isPending) ProcessSend(token.Socket, e);
+                bool isPending = token.Socket.ReceiveAsync(e);
+                if (!isPending) ProcessReceive(token.Socket, e);
             }
             else
             {
@@ -178,23 +177,64 @@ namespace UnlitSocket
 
         public void Send(int connectionID, Message message)
         {
+            message.Retain();
+            AsyncUserToken token;
 
+            if(!m_ConnectionDic.TryGetValue(connectionID, out token))
+            {
+                message.Release();
+                return;
+            }
+
+            if (!token.IsConnected)
+            {
+                message.Release();
+                return;
+            }
+
+            SocketAsyncEventArgs sendArg;
+            if (!m_SendArgsPool.TryTake(out sendArg))
+            {
+                sendArg = new SocketAsyncEventArgs();
+                sendArg.Completed += ProcessSend;
+            }
+
+            message.ConnectionID = connectionID;
+            sendArg.UserToken = message;
+            message.BindToArgsSend(sendArg, message.Position);
+
+            try
+            {
+                bool isPending = token.Socket.SendAsync(sendArg);
+                if (!isPending) ProcessSend(token.Socket, sendArg);
+            }
+            catch
+            {
+                m_Logger?.Debug($"Send Failed Recycling Message");
+                sendArg.BufferList = null;
+                sendArg.UserToken = null;
+                m_SendArgsPool.Add(sendArg);
+                message.Release();
+            }
         }
 
         private void ProcessSend(object sender, SocketAsyncEventArgs e)
         {
             if (e.SocketError == SocketError.Success)
             {
-                // done echoing data back to the client
-                AsyncUserToken token = (AsyncUserToken)e.UserToken;
-                // read the next block of data send from the client
-                e.SetBuffer(e.Offset, m_MaxMessageSize);
-                bool isPending = token.Socket.ReceiveAsync(e);
-                if (!isPending) ProcessReceive(token.Socket, e);
+                m_Logger?.Debug($"Byte Transfered : { e.BytesTransferred }");
+                ((Message)e.UserToken).Release();
+                e.UserToken = null;
+                e.BufferList = null;
+                m_SendArgsPool.Add(e);
             }
             else
             {
-                CloseClientSocket(e);
+                m_Logger?.Debug("Send Failed");
+                ((Message)e.UserToken).Release();
+                e.UserToken = null;
+                e.BufferList = null;
+                m_SendArgsPool.Add(e);
             }
         }
 
@@ -211,6 +251,7 @@ namespace UnlitSocket
             catch (Exception) { }
 
             token.Socket.Close();
+            token.IsConnected = false;
             m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Disconnected));
             var currentNumber = Interlocked.Decrement(ref m_CurrentConnectionCount);
             m_Logger?.Debug($"client { token.ConnectionID } has been disconnected from the server. There are {currentNumber} clients connected to the server");
@@ -234,8 +275,9 @@ namespace UnlitSocket
                         OnDisconnected?.Invoke(receivedMessage.ConnectionID);
                         break;
                     case MessageType.Data:
+                        receivedMessage.MessageData.Retain();
                         OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData);
-                        Message.Push(receivedMessage.MessageData);
+                        receivedMessage.MessageData.Release();
                         break;
                     default:
                         throw new Exception("Unknown MessageType");

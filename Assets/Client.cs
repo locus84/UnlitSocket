@@ -11,17 +11,33 @@ namespace UnlitSocket
         public IPEndPoint RemoteEndPoint { get; private set; }
         public ConnectionStatus Status { get; private set; } = ConnectionStatus.Disconnected;
 
-        public delegate void OnReceivedDelegate(Message message);
-        public OnReceivedDelegate OnReceived;
+        public ConnectionStatusChangeDelegate OnConnected;
+        public ConnectionStatusChangeDelegate OnDisconnected;
+        public DataReceivedDelegate OnDataReceived;
 
         private int m_receiveBufferSize;
         SocketAsyncEventArgs m_ReceiveArg;
-        SocketAsyncEventArgs m_SendArg;
+        Message m_CurrentMessage;
         ILogReceiver m_Logger;
         Socket m_Socket;
+        byte[] m_SizeReadArray = new byte[2];
 
+        ConcurrentBag<SocketAsyncEventArgs> m_SendArgsPool = new ConcurrentBag<SocketAsyncEventArgs>();
         ConcurrentQueue<Message> m_MessagePool = new ConcurrentQueue<Message>();
-        ConcurrentQueue<Message> m_ReceivedMessage = new ConcurrentQueue<Message>();
+        ConcurrentQueue<ReceivedMessage> m_ReceivedMessages = new ConcurrentQueue<ReceivedMessage>();
+
+        struct ReceivedMessage
+        {
+            public int ConnectionID;
+            public MessageType Type;
+            public Message MessageData;
+            public ReceivedMessage(int connectionID, MessageType type, Message message = null)
+            {
+                ConnectionID = connectionID;
+                Type = type;
+                MessageData = message;
+            }
+        }
 
         public Client(int receiveBufferSize)
         {
@@ -29,8 +45,6 @@ namespace UnlitSocket
             m_ReceiveArg = new SocketAsyncEventArgs();
             m_ReceiveArg.Completed += ProcessReceive;
             m_ReceiveArg.SetBuffer(new byte[receiveBufferSize], 0, receiveBufferSize);
-            m_SendArg = new SocketAsyncEventArgs();
-            m_SendArg.Completed += ProcessSend;
         }
 
         public void SetLogger(ILogReceiver logger) => m_Logger = logger;
@@ -75,37 +89,66 @@ namespace UnlitSocket
         {
             if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
             {
-                m_Logger?.Debug($"Client ReceivedData Offset : {e.Offset} Count : {e.BytesTransferred}");
+                //this is initial length
+                //TODO have to check bytesTransferred
+                if (m_CurrentMessage == null)
+                {
+                    var size = MessageReader.ReadUInt16(m_ReceiveArg.Buffer);
+                    m_CurrentMessage = Message.Pop(size);
+                    m_CurrentMessage.BindToArgsReceive(m_ReceiveArg, size);
+                }
+                else
+                {
+                    m_ReceivedMessages.Enqueue(new ReceivedMessage(0, MessageType.Data, m_CurrentMessage));
+                    m_CurrentMessage = null;
+                    m_ReceiveArg.SetBuffer(m_SizeReadArray, 0, 2);
+                }
+
                 bool isPending = m_Socket.ReceiveAsync(e);
-                if (!isPending) ProcessReceive(sender, e);
+                if (!isPending) ProcessReceive(m_Socket, e);
             }
             else
             {
+                if(m_CurrentMessage != null)
+                {
+                    m_CurrentMessage = null;
+                    m_ReceiveArg.SetBuffer(m_SizeReadArray, 0, 2);
+                }
                 CloseClientSocket(e);
             }
         }
 
         public void Send(Message message)
         {
+            message.Retain();
+
             if (Status != ConnectionStatus.Connected)
             {
-                message.Retain();
                 message.Release();
                 return;
             }
 
+            SocketAsyncEventArgs sendArg;
+            if (!m_SendArgsPool.TryTake(out sendArg))
+            {
+                sendArg = new SocketAsyncEventArgs();
+                sendArg.Completed += ProcessSend;
+            }
+
+            sendArg.UserToken = message;
+            message.BindToArgsSend(sendArg, message.Position);
+
             try
             {
-                message.Retain();
-
-                //var data = message.DataProvider.GetData();
-                //message.Args.SetBuffer(data.Array, data.Offset, data.Count);
-
-                //bool isPending = m_Socket.SendAsync(message.Args);
-                //if (!isPending) ProcessSend(null, message.Args);
+                bool isPending = m_Socket.SendAsync(sendArg);
+                if (!isPending) ProcessSend(m_Socket, sendArg);
             }
             catch
             {
+                m_Logger?.Debug($"Send Failed Recycling Message");
+                sendArg.BufferList = null;
+                sendArg.UserToken = null;
+                m_SendArgsPool.Add(sendArg);
                 message.Release();
             }
         }
@@ -116,22 +159,41 @@ namespace UnlitSocket
             {
                 m_Logger?.Debug($"Byte Transfered : { e.BytesTransferred }");
                 ((Message)e.UserToken).Release();
+                e.UserToken = null;
+                e.BufferList = null;
+                m_SendArgsPool.Add(e);
             }
             else
             {
                 m_Logger?.Debug("Send Failed");
                 ((Message)e.UserToken).Release();
+                e.UserToken = null;
+                e.BufferList = null;
+                m_SendArgsPool.Add(e);
             }
         }
 
         public void Update()
         {
-            Message receivedMessage;
-            while(m_ReceivedMessage.TryDequeue(out receivedMessage))
+            ReceivedMessage receivedMessage;
+            while (m_ReceivedMessages.TryDequeue(out receivedMessage))
             {
-                receivedMessage.Retain();
-                OnReceived?.Invoke(receivedMessage);
-                receivedMessage.Release();
+                switch (receivedMessage.Type)
+                {
+                    case MessageType.Connected:
+                        OnConnected?.Invoke(receivedMessage.ConnectionID);
+                        break;
+                    case MessageType.Disconnected:
+                        OnDisconnected?.Invoke(receivedMessage.ConnectionID);
+                        break;
+                    case MessageType.Data:
+                        receivedMessage.MessageData.Retain();
+                        OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData);
+                        receivedMessage.MessageData.Release();
+                        break;
+                    default:
+                        throw new Exception("Unknown MessageType");
+                }
             }
         }
 

@@ -19,7 +19,9 @@ namespace UnlitSocket
         internal static readonly UTF8Encoding Encoding = new UTF8Encoding(false, true);
         internal static readonly byte[] StringBuffer = new byte[MAX_STRING_LENGTH];
 
+        internal int ConnectionID;
         public int Capacity => MAX_BYTE_ARRAY_SIZE * m_InnerDatas.Count;
+        private byte[] m_SendSize = new byte[2];
         private List<ArraySegment<byte>> m_InnerDatas = new List<ArraySegment<byte>>(5); //it can be go up to several, let it be 5
         public int Position = 0;
         private int m_RefCount = 0;
@@ -131,11 +133,19 @@ namespace UnlitSocket
         public void Clear()
         {
             //keep only one, discard rest
-            while (m_InnerDatas.Count > 1)
+            for(int i = m_InnerDatas.Count - 1; i >= 0; i--)
             {
-                var poolToReturn = m_InnerDatas[m_InnerDatas.Count - 1];
-                s_ByteArrayPool.Enqueue(poolToReturn.Array);
-                m_InnerDatas.RemoveAt(m_InnerDatas.Count - 1);
+                if(i == 0)
+                {
+                    //need to reset array segment as full size
+                    m_InnerDatas[0] = new ArraySegment<byte>(m_InnerDatas[0].Array);
+                }
+                else
+                {
+                    var poolToReturn = m_InnerDatas[i];
+                    s_ByteArrayPool.Enqueue(poolToReturn.Array);
+                    m_InnerDatas.RemoveAt(i);
+                }
             }
 
             Position = 0;
@@ -172,11 +182,23 @@ namespace UnlitSocket
             return msg;
         }
 
-        public void BindToArgs(System.Net.Sockets.SocketAsyncEventArgs args, int count)
+        public void BindToArgsReceive(System.Net.Sockets.SocketAsyncEventArgs args, int count)
         {
             var quotient = Math.DivRem(count, MAX_BYTE_ARRAY_SIZE, out var remainder);
-            for(int i = 0; i < quotient; i++) m_InnerDatas[i] = new ArraySegment<byte>(m_InnerDatas[i].Array);
             if (remainder > 0) m_InnerDatas[quotient] = new ArraySegment<byte>(m_InnerDatas[quotient].Array, 0, remainder);
+            args.BufferList = m_InnerDatas;
+        }
+
+        public void BindToArgsSend(System.Net.Sockets.SocketAsyncEventArgs args, int count)
+        {
+            var quotient = Math.DivRem(count, MAX_BYTE_ARRAY_SIZE, out var remainder);
+            if (remainder > 0) m_InnerDatas[quotient] = new ArraySegment<byte>(m_InnerDatas[quotient].Array, 0, remainder);
+            
+            //set size only on here
+            MessageWriter.WriteUInt16(m_SendSize, (ushort)count);
+            m_InnerDatas.Insert(0, new ArraySegment<byte>(m_SendSize));
+            args.BufferList = m_InnerDatas;
+            m_InnerDatas.RemoveAt(0);
         }
     }
 }
