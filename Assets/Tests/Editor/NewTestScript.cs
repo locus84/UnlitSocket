@@ -14,7 +14,7 @@ namespace Tests
         [Test]
         public void TestStream()
         {
-            var message = new Message();
+            var message = Message.Pop();
             message.WriteByte(131);
             Debug.Log($"Pos {message.Position} Capa {message.Capacity}");
 
@@ -41,7 +41,7 @@ namespace Tests
         [Test]
         public void TestStreamString()
         {
-            var message = new Message();
+            var message = Message.Pop();
             //message.WriteUInt16(124);
             message.WriteString("하하 이것은 좀 길다란 바이트입니다. 이거 사이즈가 512는 넘어야 해요" +
                 "하하 이것은 좀 길다란 바이트입니다. 이거 사이즈가 512는 넘어야 해요" +

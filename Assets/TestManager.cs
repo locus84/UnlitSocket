@@ -4,23 +4,36 @@ using System.Net;
 using UnityEngine;
 using UnlitSocket;
 using System;
+using System.Net.Sockets;
 
 public class TestManager : MonoBehaviour
 {
     Server m_Server;
     List<Client> m_Clients = new List<Client>();
-    // Start is called before the first frame update
+
     void Start()
     {
-        m_Server = new Server(5, 16);
+        m_Server = new Server(10000);
         m_Server.Init();
         m_Server.SetLogger(new TestLogger());
-        for(int i = 0; i < 10; i++)
+        m_Server.OnDataReceived += OnServerDataReceived;
+        for (int i = 0; i < 100; i++)
         {
-            var newClient = new Client(16);
+            var newClient = new Client(-1, 16);
             newClient.SetLogger(new TestLogger());
+            newClient.OnDataReceived += OnClientDataReceived;
             m_Clients.Add(newClient);
         }
+    }
+
+    private void OnClientDataReceived(int connectionID, Message message)
+    {
+        Debug.Log("OnClientDataReceived : " + message.ReadString());
+    }
+
+    private void OnServerDataReceived(int connectionID, Message message)
+    {
+        Debug.Log("OnServerDataReceived : " + message.ReadString());
     }
 
     private void OnDestroy()
@@ -33,6 +46,7 @@ public class TestManager : MonoBehaviour
     private void OnGUI()
     {
         defaultVal = GUILayout.TextField(defaultVal);
+
         if(GUILayout.Button("Send"))
         {
             foreach (var client in m_Clients)
@@ -40,8 +54,9 @@ public class TestManager : MonoBehaviour
                 if(client.Status == ConnectionStatus.Connected)
                 {
                     var bytes = System.Text.Encoding.UTF8.GetBytes(defaultVal);
-                    //var message = client.CreateMessage(new CustomMessage(bytes));
-                    //client.Send(message);
+                    var message = Message.Pop();
+                    message.WriteString("하하 이건 메시지입니다.");
+                    client.Send(message);
                 }
             }
         }
@@ -51,7 +66,23 @@ public class TestManager : MonoBehaviour
             foreach (var client in m_Clients)
             {
                 if (client.Status == ConnectionStatus.Disconnected)
-                    client.Connect(new IPEndPoint(UnityEngine.Random.value > 0.5f? IPAddress.Parse("127.0.0.1") : IPAddress.Parse("::1"), 3000));
+                {
+                    client.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 54321));
+                    //client.Connect(new IPEndPoint(UnityEngine.Random.value > 0.5f? IPAddress.Parse("127.0.0.1") : IPAddress.Parse("::1"), 54321));
+                }
+            }
+        }
+
+        if (GUILayout.Button("Connect More"))
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                var newClient = new Client(-1, 16);
+                newClient.SetLogger(new TestLogger());
+                newClient.OnDataReceived += OnClientDataReceived;
+                newClient.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 54321));
+                //newClient.Connect(new IPEndPoint(UnityEngine.Random.value > 0.5f ? IPAddress.Parse("127.0.0.1") : IPAddress.Parse("::1"), 54321));
+                m_Clients.Add(newClient);
             }
         }
 
@@ -66,17 +97,24 @@ public class TestManager : MonoBehaviour
 
         if (!m_Server.IsRunning && GUILayout.Button("Start Server"))
         {
-            m_Server.Start(3000);
+            m_Server.Start(54321);
         }
         if (m_Server.IsRunning && GUILayout.Button("Stop Server"))
         {
             m_Server.Stop();
         }
 
-        foreach(var client in m_Clients)
+        foreach (var client in m_Clients)
         {
             GUILayout.Label(client.Status.ToString());
         }
+    }
+
+    private void Update()
+    {
+        m_Server.Update();
+        for (int i = 0; i < m_Clients.Count; i++)
+            m_Clients[i].Update();
     }
 }
 

@@ -38,9 +38,10 @@ namespace UnlitSocket
 
         public void ClearMessage()
         {
-            if(CurrentMessage == null)
+            if(CurrentMessage != null)
             {
                 CurrentMessage = null;
+                ReceiveArg.BufferList = null;
                 ReceiveArg.SetBuffer(m_SizeReadArray, 0, 2);
             }
         }

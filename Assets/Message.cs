@@ -9,8 +9,8 @@ namespace UnlitSocket
 {
     public class Message
     {
-        const int MAX_BYTE_ARRAY_SIZE = 512;
-        const int WARM_UP_MESSAGE_COUNT = 512;
+        const int MAX_BYTE_ARRAY_SIZE = 256;
+        const int WARM_UP_MESSAGE_COUNT = 256;
 
         static ConcurrentQueue<byte[]> s_ByteArrayPool = new ConcurrentQueue<byte[]>();
         static ConcurrentQueue<Message> s_MessagePool = new ConcurrentQueue<Message>();
@@ -19,20 +19,21 @@ namespace UnlitSocket
         internal static readonly UTF8Encoding Encoding = new UTF8Encoding(false, true);
         internal static readonly byte[] StringBuffer = new byte[MAX_STRING_LENGTH];
 
-        internal int ConnectionID;
         public int Capacity => MAX_BYTE_ARRAY_SIZE * m_InnerDatas.Count;
         private byte[] m_SendSize = new byte[2];
         private List<ArraySegment<byte>> m_InnerDatas = new List<ArraySegment<byte>>(5); //it can be go up to several, let it be 5
         public int Position = 0;
         private int m_RefCount = 0;
 
-        static Message()
+        public static void WarmUpMessage(int count)
         {
-            for(int i = 0; i < WARM_UP_MESSAGE_COUNT; i++)
-            {
-                s_ByteArrayPool.Enqueue(new byte[MAX_BYTE_ARRAY_SIZE]);
+            while(s_MessagePool.Count < count)
                 s_MessagePool.Enqueue(new Message());
-            }
+        }
+
+        private Message()
+        {
+            m_InnerDatas.Add(new ArraySegment<byte>(new byte[MAX_BYTE_ARRAY_SIZE]));
         }
 
         private ref byte ByteAtIndex(int position)
@@ -184,6 +185,7 @@ namespace UnlitSocket
 
         public void BindToArgsReceive(System.Net.Sockets.SocketAsyncEventArgs args, int count)
         {
+            args.SetBuffer(null, 0, 0);
             var quotient = Math.DivRem(count, MAX_BYTE_ARRAY_SIZE, out var remainder);
             if (remainder > 0) m_InnerDatas[quotient] = new ArraySegment<byte>(m_InnerDatas[quotient].Array, 0, remainder);
             args.BufferList = m_InnerDatas;
@@ -191,6 +193,7 @@ namespace UnlitSocket
 
         public void BindToArgsSend(System.Net.Sockets.SocketAsyncEventArgs args, int count)
         {
+            args.SetBuffer(null, 0, 0);
             var quotient = Math.DivRem(count, MAX_BYTE_ARRAY_SIZE, out var remainder);
             if (remainder > 0) m_InnerDatas[quotient] = new ArraySegment<byte>(m_InnerDatas[quotient].Array, 0, remainder);
             
@@ -198,7 +201,6 @@ namespace UnlitSocket
             MessageWriter.WriteUInt16(m_SendSize, (ushort)count);
             m_InnerDatas.Insert(0, new ArraySegment<byte>(m_SendSize));
             args.BufferList = m_InnerDatas;
-            m_InnerDatas.RemoveAt(0);
         }
     }
 }
