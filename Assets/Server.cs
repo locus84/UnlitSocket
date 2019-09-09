@@ -1,11 +1,7 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using System.Collections.Generic;
 using System.Net.Sockets;
-using System;
 using System.Threading;
 using System.Net;
-using System.Collections.Concurrent;
 
 namespace UnlitSocket
 {
@@ -51,6 +47,8 @@ namespace UnlitSocket
             // create the socket which listens for incoming connections
             m_ListenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
             m_ListenSocket.NoDelay = true;
+            m_ListenSocket.SendBufferSize = 512;
+            m_ListenSocket.ReceiveBufferSize = 512;
             m_ListenSocket.SendTimeout = 5000;
             m_ListenSocket.DualMode = true;
             m_ListenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
@@ -104,7 +102,6 @@ namespace UnlitSocket
             }
             else
             {
-                Debug.Log(e.SocketError);
                 //close bad accepted socket
                 if (e.AcceptSocket != null)
                     e.AcceptSocket.Close();

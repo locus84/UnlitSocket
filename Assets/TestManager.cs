@@ -55,7 +55,16 @@ public class TestManager : MonoBehaviour
                 {
                     var bytes = System.Text.Encoding.UTF8.GetBytes(defaultVal);
                     var message = Message.Pop();
-                    message.WriteString("하하 이건 메시지입니다.");
+
+                    if(UnityEngine.Random.value > 0.5)
+                    {
+                        message.WriteString("하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.");
+                    }
+                    else
+                    {
+                        message.WriteString("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+                    }
+                    
                     client.Send(message);
                 }
             }

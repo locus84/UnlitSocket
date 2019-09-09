@@ -1,4 +1,4 @@
-﻿using System.Collections;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
@@ -35,10 +35,17 @@ namespace UnlitSocket
         /// </summary>
         protected virtual void Send(Socket socket, Message message)
         {
+            if (message.Position == 0)
+            {
+                message.Release();
+                return;
+            }
+
             SocketAsyncEventArgs sendArg;
             if (!m_SendArgsPool.TryTake(out sendArg))
             {
                 sendArg = new SocketAsyncEventArgs();
+                sendArg.BufferList = new List<ArraySegment<byte>>();
                 sendArg.Completed += ProcessSend;
             }
 
@@ -55,8 +62,6 @@ namespace UnlitSocket
                 m_Logger?.Debug($"Send Failed Recycling Message");
                 message.Release();
                 sendArg.UserToken = null;
-                sendArg.BufferList.RemoveAt(0);
-                sendArg.BufferList = null;
                 m_SendArgsPool.Add(sendArg);
             }
         }
@@ -67,11 +72,8 @@ namespace UnlitSocket
             {
                 if (e.SocketError == SocketError.Success)
                 {
-                    m_Logger?.Debug($"Byte Transfered : { e.BytesTransferred }");
                     ((Message)e.UserToken).Release();
                     e.UserToken = null;
-                    e.BufferList.RemoveAt(0);
-                    e.BufferList = null;
                     m_SendArgsPool.Add(e);
                 }
                 else
@@ -79,12 +81,10 @@ namespace UnlitSocket
                     m_Logger?.Debug("Send Failed");
                     ((Message)e.UserToken).Release();
                     e.UserToken = null;
-                    e.BufferList.RemoveAt(0);
-                    e.BufferList = null;
                     m_SendArgsPool.Add(e);
                 }
             }
-            catch(System.Exception ex)
+            catch(Exception ex)
             {
                 m_Logger?.Debug(ex.ToString());
             }
@@ -92,6 +92,7 @@ namespace UnlitSocket
 
         protected void StartReceive(AsyncUserToken token)
         {
+            token.ReadyToReceiveLength();
             bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
             if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
         }
@@ -101,18 +102,23 @@ namespace UnlitSocket
             var token = e.UserToken as AsyncUserToken;
             if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
             {
-                //this is initial length
-                //TODO have to check bytesTransferred
-                if (token.CurrentMessage == null)
+                if (token.CurrentMessage != null)
                 {
-                    var size = MessageReader.ReadUInt16(token.ReceiveArg.Buffer);
-                    token.CurrentMessage = Message.Pop(size);
-                    token.CurrentMessage.BindToArgsReceive(token.ReceiveArg, size);
+                    //return true means we have received all bytes
+                    if (token.AppendReceivedBuffer(e.BytesTransferred)) 
+                    {
+                        m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
+
+                        //clear message
+                        token.ReadyToReceiveLength();
+                        token.CurrentMessage = null;
+                    }
                 }
                 else
                 {
-                    m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
-                    token.ClearMessage();
+                    //assign message afaik there was no case only one byte is transfered
+                    token.CurrentMessage = Message.Pop();
+                    token.ReadyToReceiveMessage();
                 }
 
                 bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
@@ -120,7 +126,11 @@ namespace UnlitSocket
             }
             else
             {
-                token.ClearMessage();
+                if(token.CurrentMessage != null)
+                {
+                    Message.Push(token.CurrentMessage);
+                    token.CurrentMessage = null;
+                }
                 CloseSocket(token);
             }
         }
@@ -144,7 +154,7 @@ namespace UnlitSocket
                         receivedMessage.MessageData.Release();
                         break;
                     default:
-                        throw new System.Exception("Unknown MessageType");
+                        throw new Exception("Unknown MessageType");
                 }
             }
         }

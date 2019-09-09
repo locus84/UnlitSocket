@@ -20,34 +20,51 @@ namespace UnlitSocket
     public class AsyncUserToken
     {
         public bool IsConnected = false;
-
+        ushort m_ReadTotal = 0;
+        ushort m_SizeTotal = 0;
+        int m_InitialBufferCount = 0;
         public int ConnectionID { get; private set; }
         public Socket Socket { get; set; }
 
-        byte[] m_SizeReadArray = new byte[2];
+        public byte[] SizeReadBuffer = new byte[2];
         public SocketAsyncEventArgs ReceiveArg { get; private set; }
         public Message CurrentMessage = null;
+
+        public void ReadyToReceiveLength()
+        {
+            ReceiveArg.BufferList.Clear();
+            ReceiveArg.BufferList.Add(new ArraySegment<byte>(SizeReadBuffer));
+            ReceiveArg.BufferList = ReceiveArg.BufferList;
+            m_ReadTotal = 0;
+        }
+
+        public void ReadyToReceiveMessage()
+        {
+            var size = MessageReader.ReadUInt16(SizeReadBuffer);
+            CurrentMessage.BindToArgsReceive(ReceiveArg, size);
+            m_SizeTotal = size;
+            m_InitialBufferCount = ReceiveArg.BufferList.Count;
+        }
+
+        public bool AppendReceivedBuffer(int receiveCount)
+        {
+            m_ReadTotal += (ushort)receiveCount;
+            //received properly
+            if (m_ReadTotal == m_SizeTotal) return true;
+            Message.AdvanceRecevedOffset(ReceiveArg, m_InitialBufferCount, m_ReadTotal);
+            return false;
+        }
 
         public AsyncUserToken(int id)
         {
             ConnectionID = id;
             ReceiveArg = new SocketAsyncEventArgs();
+            ReceiveArg.BufferList = new List<ArraySegment<byte>>();
             ReceiveArg.UserToken = this;
-            ReceiveArg.SetBuffer(m_SizeReadArray, 0, 2);
-        }
-
-        public void ClearMessage()
-        {
-            if(CurrentMessage != null)
-            {
-                CurrentMessage = null;
-                ReceiveArg.BufferList = null;
-                ReceiveArg.SetBuffer(m_SizeReadArray, 0, 2);
-            }
         }
     }
 
-    class AsyncUserTokenPool
+    internal class AsyncUserTokenPool
     {
         Stack<AsyncUserToken> m_pool;
 
