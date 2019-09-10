@@ -9,7 +9,6 @@ namespace UnlitSocket
     {
         private int m_MaxConnectionCount; //maximum connection
         Socket m_ListenSocket;
-        int m_TotalBytesRead;
         int m_CurrentConnectionCount;
         public bool IsRunning { get; private set; } = false;
 
@@ -20,7 +19,6 @@ namespace UnlitSocket
 
         public Server(int maxConnections)
         {
-            m_TotalBytesRead = 0;
             m_CurrentConnectionCount = 0;
             m_MaxConnectionCount = maxConnections;
 

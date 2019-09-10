@@ -40,16 +40,16 @@ namespace UnlitSocket
 
         public bool HandleLengthReceive(int byteTransferred)
         {
-            if (m_ReadTotal == 1 || byteTransferred == 2)
+            if(m_ReadTotal + byteTransferred == SizeReadBuffer.Length)
             {
                 //now we have size howmuch we can receive, set it
                 m_SizeTotal = MessageReader.ReadUInt16(SizeReadBuffer);
                 return true;
             }
             //this is rare case, only one byte is received due to packet drop, we have to wait for another byte
-            ReceiveArg.BufferList[0] = new ArraySegment<byte>(SizeReadBuffer, 1, 1);
+            m_ReadTotal += byteTransferred;
+            ReceiveArg.BufferList[0] = new ArraySegment<byte>(SizeReadBuffer, m_ReadTotal, SizeReadBuffer.Length - m_ReadTotal);
             ReceiveArg.BufferList = ReceiveArg.BufferList;
-            m_ReadTotal++;
             return false;
         }
 
