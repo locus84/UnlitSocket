@@ -28,24 +28,18 @@ namespace UnlitSocket
                 m_Logger?.Debug("Invalid connect function call");
                 return;
             }
-            try
-            {
-                m_Token.Socket = new Socket(remoteEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-                m_Token.Socket.SendTimeout = 5000;
-                m_Token.Socket.NoDelay = true;
 
-                var acceptEventArg = new SocketAsyncEventArgs();
-                acceptEventArg.Completed += ProcessConnect;
-                RemoteEndPoint = remoteEndPoint;
-                acceptEventArg.RemoteEndPoint = remoteEndPoint;
-                Status = ConnectionStatus.Connecting;
-                bool isPending = m_Token.Socket.ConnectAsync(acceptEventArg);
-                if (!isPending) ProcessConnect(m_Token.Socket, acceptEventArg);
-            }
-            catch(System.Exception e)
-            {
-                m_Logger?.Debug(e.ToString());
-            }
+            m_Token.Socket = new Socket(remoteEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            m_Token.Socket.SendTimeout = 5000;
+            m_Token.Socket.NoDelay = true;
+
+            var acceptEventArg = new SocketAsyncEventArgs();
+            acceptEventArg.Completed += ProcessConnect;
+            RemoteEndPoint = remoteEndPoint;
+            acceptEventArg.RemoteEndPoint = remoteEndPoint;
+            Status = ConnectionStatus.Connecting;
+            bool isPending = m_Token.Socket.ConnectAsync(acceptEventArg);
+            if (!isPending) ProcessConnect(m_Token.Socket, acceptEventArg);
         }
 
         private void ProcessConnect(object sender, SocketAsyncEventArgs e)
@@ -63,9 +57,16 @@ namespace UnlitSocket
             }
         }
 
+        /// <summary>
+        /// Send to the server
+        /// </summary>
         public void Send(Message message)
         {
-            message.Retain();
+            if(message.Position == 0)
+            {
+                message.Release();
+                return;
+            }
 
             if (Status != ConnectionStatus.Connected)
             {
@@ -78,7 +79,12 @@ namespace UnlitSocket
 
         public void Disconnect()
         {
-            if (m_Token.Socket != null) m_Token.Socket.Disconnect(false);
+            try
+            {
+                var socket = m_Token.Socket;
+                if (socket != null) socket.Disconnect(false);
+            }
+            catch { }
         }
 
         protected override void CloseSocket(AsyncUserToken token)

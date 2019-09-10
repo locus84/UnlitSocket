@@ -11,12 +11,16 @@ public class TestManager : MonoBehaviour
     Server m_Server;
     List<Client> m_Clients = new List<Client>();
 
+    List<int> m_ConnectedClients = new List<int>();
+
     void Start()
     {
         m_Server = new Server(10000);
         m_Server.Init();
         m_Server.SetLogger(new TestLogger());
         m_Server.OnDataReceived += OnServerDataReceived;
+        m_Server.OnConnected += id => m_ConnectedClients.Add(id);
+        m_Server.OnDisconnected += id => m_ConnectedClients.Remove(id);
         for (int i = 0; i < 100; i++)
         {
             var newClient = new Client(-1, 16);
@@ -47,7 +51,17 @@ public class TestManager : MonoBehaviour
     {
         defaultVal = GUILayout.TextField(defaultVal);
 
-        if(GUILayout.Button("Send"))
+        if (GUILayout.Button("ServerSend"))
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(defaultVal);
+            var message = Message.Pop();
+
+            message.WriteString("하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건 메시지입니다.하하 이건aa");
+            m_Server.Send(m_ConnectedClients, message);
+        }
+
+
+        if (GUILayout.Button("ClientSend"))
         {
             foreach (var client in m_Clients)
             {
@@ -111,11 +125,6 @@ public class TestManager : MonoBehaviour
         if (m_Server.IsRunning && GUILayout.Button("Stop Server"))
         {
             m_Server.Stop();
-        }
-
-        foreach (var client in m_Clients)
-        {
-            GUILayout.Label(client.Status.ToString());
         }
     }
 

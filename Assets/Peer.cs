@@ -50,7 +50,7 @@ namespace UnlitSocket
             }
 
             sendArg.UserToken = message;
-            message.BindToArgsSend(sendArg, message.Position);
+            message.BindToArgsSend(sendArg);
 
             try
             {
@@ -59,7 +59,7 @@ namespace UnlitSocket
             }
             catch
             {
-                m_Logger?.Debug($"Send Failed Recycling Message");
+                //send failed, let's release message
                 message.Release();
                 sendArg.UserToken = null;
                 m_SendArgsPool.Add(sendArg);
@@ -68,25 +68,18 @@ namespace UnlitSocket
 
         protected virtual void ProcessSend(object sender, SocketAsyncEventArgs e)
         {
-            try
+            if (e.SocketError == SocketError.Success)
             {
-                if (e.SocketError == SocketError.Success)
-                {
-                    ((Message)e.UserToken).Release();
-                    e.UserToken = null;
-                    m_SendArgsPool.Add(e);
-                }
-                else
-                {
-                    m_Logger?.Debug("Send Failed");
-                    ((Message)e.UserToken).Release();
-                    e.UserToken = null;
-                    m_SendArgsPool.Add(e);
-                }
+                ((Message)e.UserToken).Release();
+                e.UserToken = null;
+                m_SendArgsPool.Add(e);
             }
-            catch(Exception ex)
+            else
             {
-                m_Logger?.Debug(ex.ToString());
+                //send failed, let's release
+                ((Message)e.UserToken).Release();
+                e.UserToken = null;
+                m_SendArgsPool.Add(e);
             }
         }
 
@@ -114,11 +107,13 @@ namespace UnlitSocket
                         token.CurrentMessage = null;
                     }
                 }
-                else
+                else 
                 {
-                    //assign message afaik there was no case only one byte is transfered
-                    token.CurrentMessage = Message.Pop();
-                    token.ReadyToReceiveMessage();
+                    if(token.HandleLengthReceive(e.BytesTransferred))
+                    {
+                        token.CurrentMessage = Message.Pop();
+                        token.ReadyToReceiveMessage();
+                    }
                 }
 
                 bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
@@ -128,7 +123,7 @@ namespace UnlitSocket
             {
                 if(token.CurrentMessage != null)
                 {
-                    Message.Push(token.CurrentMessage);
+                    token.CurrentMessage.Release();
                     token.CurrentMessage = null;
                 }
                 CloseSocket(token);
@@ -149,7 +144,6 @@ namespace UnlitSocket
                         OnDisconnected?.Invoke(receivedMessage.ConnectionID);
                         break;
                     case MessageType.Data:
-                        receivedMessage.MessageData.Retain();
                         OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData);
                         receivedMessage.MessageData.Release();
                         break;
@@ -167,7 +161,7 @@ namespace UnlitSocket
                 token.Socket.Shutdown(SocketShutdown.Send);
             }
             // throws if client process has already closed
-            catch (System.Exception) { }
+            catch { }
             token.Socket.Close();
             token.Socket = null;
             token.IsConnected = false;

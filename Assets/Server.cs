@@ -113,13 +113,49 @@ namespace UnlitSocket
 
         public void Stop()
         {
+            if (!IsRunning) return;
+
             IsRunning = false;
             m_ListenSocket?.Close();
+            foreach(var kv in m_ConnectionDic)
+            {
+                //socket could be already disposed
+                try
+                {
+                    var socket = kv.Value.Socket;
+                    if(socket != null) socket.Disconnect(false);
+                }
+                catch { }
+            }
         }
 
+        /// <summary>
+        /// Send to multiple recipients without creating multiple Message object
+        /// </summary>
+        public void Send(IList<int> recipients, Message message)
+        {
+            for(int i = 0; i < recipients.Count; i++)
+            {
+                //hold message not to be recycled, one send release message once.
+                message.Retain();
+                Send(recipients[i], message);
+            }
+
+            //now release retained by pop()
+            message.Release();
+        }
+
+        /// <summary>
+        /// Send to one client
+        /// </summary>
         public void Send(int connectionID, Message message)
         {
-            message.Retain();
+            if(message.Position == 0)
+            {
+                message.Release();
+                return;
+            }
+
             AsyncUserToken token;
 
             if(!m_ConnectionDic.TryGetValue(connectionID, out token))

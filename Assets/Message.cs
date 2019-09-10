@@ -55,7 +55,10 @@ namespace UnlitSocket
             while (Position + amount >= MAX_BYTE_ARRAY_SIZE * m_InnerDatas.Count)
             {
                 byte[] newByteArray;
-                if (!s_ByteArrayPool.TryDequeue(out newByteArray)) newByteArray = new byte[MAX_BYTE_ARRAY_SIZE];
+                if (!s_ByteArrayPool.TryDequeue(out newByteArray))
+                {
+                    newByteArray = new byte[MAX_BYTE_ARRAY_SIZE];
+                }
                 m_InnerDatas.Add(newByteArray);
             }
         }
@@ -165,7 +168,13 @@ namespace UnlitSocket
 
         public static Message Pop()
         {
-            return s_MessagePool.TryDequeue(out var msg) ? msg : new Message();
+            Message result;
+            if (!s_MessagePool.TryDequeue(out result))
+            {
+                result = new Message();
+            }
+            result.Retain();
+            return result;
         }
 
         public void BindToArgsReceive(SocketAsyncEventArgs args, int count)
@@ -183,17 +192,16 @@ namespace UnlitSocket
             args.BufferList = args.BufferList;
         }
 
-        public void BindToArgsSend(SocketAsyncEventArgs args, int count)
+        public void BindToArgsSend(SocketAsyncEventArgs args)
         {
-            EnsureSize(count);
             args.BufferList.Clear();
 
             //encode size
-            MessageWriter.WriteUInt16(m_SendSize, (ushort)count);
+            MessageWriter.WriteUInt16(m_SendSize, (ushort)Position);
             args.BufferList.Add(new ArraySegment<byte>(m_SendSize));
 
             //encode actual data
-            var quotient = Math.DivRem(count, MAX_BYTE_ARRAY_SIZE, out var remainder);
+            var quotient = Math.DivRem(Position, MAX_BYTE_ARRAY_SIZE, out var remainder);
             for (int i = 0; i < quotient; i++)
                 args.BufferList.Add(new ArraySegment<byte>(m_InnerDatas[i]));
             if (remainder > 0) args.BufferList.Add(new ArraySegment<byte>(m_InnerDatas[quotient], 0, remainder));
