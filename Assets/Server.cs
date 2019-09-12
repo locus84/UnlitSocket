@@ -11,6 +11,7 @@ namespace UnlitSocket
         private int m_MaxConnectionCount; //maximum connection
         Socket m_ListenSocket;
         int m_CurrentConnectionCount;
+        int m_AcceptedCount;
         public bool IsRunning { get; private set; } = false;
 
         public int Port { get; private set; }
@@ -43,6 +44,7 @@ namespace UnlitSocket
         // incoming connection requests.    
         public void Start(int port)
         {
+            Port = port;
             // create the socket which listens for incoming connections
             m_ListenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
             m_ListenSocket.NoDelay = true;
@@ -50,7 +52,7 @@ namespace UnlitSocket
             m_ListenSocket.ReceiveBufferSize = 512;
             m_ListenSocket.SendTimeout = 5000;
             m_ListenSocket.DualMode = true;
-            m_ListenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
+            m_ListenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, Port));
             m_ListenSocket.Listen(100);
 
             var acceptEventArg = new SocketAsyncEventArgs();
@@ -74,7 +76,7 @@ namespace UnlitSocket
             {
                 var socket = sender as Socket;
                 var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
-
+                m_AcceptedCount++;
                 m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber}");
 
                 token.Socket = e.AcceptSocket;
