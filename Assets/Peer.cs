@@ -11,9 +11,11 @@ namespace UnlitSocket
         public ConnectionStatusChangeDelegate OnDisconnected;
         public DataReceivedDelegate OnDataReceived;
 
-        protected ConcurrentBag<SocketAsyncEventArgs> m_SendArgsPool = new ConcurrentBag<SocketAsyncEventArgs>();
-        protected ConcurrentQueue<ReceivedMessage> m_ReceivedMessages = new ConcurrentQueue<ReceivedMessage>();
+        protected ConcurrentQueue<SocketAsyncEventArgs> m_SendArgsPool = new ConcurrentQueue<SocketAsyncEventArgs>();
+        protected ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();
         protected ILogReceiver m_Logger;
+
+        private List<ReceivedMessage> m_ReceiveMesageCache = new List<ReceivedMessage>(10);
 
         protected struct ReceivedMessage
         {
@@ -42,7 +44,7 @@ namespace UnlitSocket
             }
 
             SocketAsyncEventArgs sendArg;
-            if (!m_SendArgsPool.TryTake(out sendArg))
+            if (!m_SendArgsPool.TryDequeue(out sendArg))
             {
                 sendArg = new SocketAsyncEventArgs();
                 sendArg.BufferList = new List<ArraySegment<byte>>();
@@ -62,37 +64,35 @@ namespace UnlitSocket
                 //send failed, let's release message
                 message.Release();
                 sendArg.UserToken = null;
-                m_SendArgsPool.Add(sendArg);
+                m_SendArgsPool.Enqueue(sendArg);
             }
         }
 
         protected virtual void ProcessSend(object sender, SocketAsyncEventArgs e)
         {
-            if (e.SocketError == SocketError.Success)
-            {
-                ((Message)e.UserToken).Release();
-                e.UserToken = null;
-                m_SendArgsPool.Add(e);
-            }
-            else
-            {
-                //send failed, let's release
-                ((Message)e.UserToken).Release();
-                e.UserToken = null;
-                m_SendArgsPool.Add(e);
-            }
+            //it doesn't matter we success or not
+            ((Message)e.UserToken).Release();
+            e.UserToken = null;
+            m_SendArgsPool.Enqueue(e);
         }
 
-        protected void StartReceive(AsyncUserToken token)
+        protected void StartReceive(UserToken token)
         {
             token.ReadyToReceiveLength();
-            bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
-            if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
+            try
+            {
+                bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
+                if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
+            }
+            catch
+            {
+                CloseSocket(token);
+            }
         }
 
         protected void ProcessReceive(object sender, SocketAsyncEventArgs e)
         {
-            var token = e.UserToken as AsyncUserToken;
+            var token = e.UserToken as UserToken;
             if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
             {
                 if (token.CurrentMessage != null)
@@ -134,10 +134,35 @@ namespace UnlitSocket
             }
         }
 
+
+        /// <summary>
+        /// this should be called in only one thread, much faster
+        /// </summary>
         public virtual void Update()
+        {
+            m_ReceivedMessages.DequeueAll(m_ReceiveMesageCache);
+            for(int i = 0; i < m_ReceiveMesageCache.Count; i++)
+            {
+                InvokeMessageCallbacks(m_ReceiveMesageCache[i]);
+            }
+            m_ReceiveMesageCache.Clear();
+        }
+
+        /// <summary>
+        /// this can be called in multiple thread
+        /// </summary>
+        public virtual void UpdateThreadSafe()
         {
             ReceivedMessage receivedMessage;
             while (m_ReceivedMessages.TryDequeue(out receivedMessage))
+            {
+                InvokeMessageCallbacks(receivedMessage);
+            }
+        }
+
+        protected void InvokeMessageCallbacks(ReceivedMessage receivedMessage)
+        {
+            try
             {
                 switch (receivedMessage.Type)
                 {
@@ -149,13 +174,14 @@ namespace UnlitSocket
                         break;
                     case MessageType.Data:
                         OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData);
-                        receivedMessage.MessageData.Release();
                         break;
                 }
             }
+            catch { throw; }
+            finally { receivedMessage.MessageData?.Release(); }
         }
 
-        protected virtual void CloseSocket(AsyncUserToken token)
+        protected virtual void CloseSocket(UserToken token)
         {
             //were we receiving message? if ture, clear message
             if (token.CurrentMessage != null)

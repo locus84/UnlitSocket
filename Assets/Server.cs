@@ -2,6 +2,7 @@
 using System.Net.Sockets;
 using System.Threading;
 using System.Net;
+using System.Collections.Concurrent;
 
 namespace UnlitSocket
 {
@@ -14,16 +15,16 @@ namespace UnlitSocket
 
         public int Port { get; private set; }
 
-        AsyncUserTokenPool m_TokenPool;
-        Dictionary<int, AsyncUserToken> m_ConnectionDic;
+        ConcurrentQueue<UserToken> m_TokenPool;
+        Dictionary<int, UserToken> m_ConnectionDic;
 
         public Server(int maxConnections)
         {
             m_CurrentConnectionCount = 0;
             m_MaxConnectionCount = maxConnections;
 
-            m_TokenPool = new AsyncUserTokenPool(maxConnections);
-            m_ConnectionDic = new Dictionary<int, AsyncUserToken>(maxConnections);
+            m_TokenPool = new ConcurrentQueue<UserToken>();
+            m_ConnectionDic = new Dictionary<int, UserToken>(maxConnections);
         }
 
         public void Init()
@@ -31,10 +32,10 @@ namespace UnlitSocket
             //init buffer, use given value in initializer
             for (int i = 0; i < m_MaxConnectionCount; i++)
             {
-                var token = new AsyncUserToken(i);
+                var token = new UserToken(i);
                 token.ReceiveArg.Completed += ProcessReceive;
                 m_ConnectionDic.Add(i, token);
-                m_TokenPool.Push(token);
+                m_TokenPool.Enqueue(token);
             }
         }
 
@@ -69,38 +70,27 @@ namespace UnlitSocket
 
         private void ProcessAccept(object sender, SocketAsyncEventArgs e)
         {
-            if (e.SocketError == SocketError.Success)
+            if (e.SocketError == SocketError.Success && m_TokenPool.TryDequeue(out var token))
             {
                 var socket = sender as Socket;
                 var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
 
-                if (currentNumber > m_MaxConnectionCount)
-                {
-                    //close bad accepted socket
-                    if (e.AcceptSocket != null)
-                        e.AcceptSocket.Disconnect(false);
-                    Interlocked.Decrement(ref m_CurrentConnectionCount);
-                }
-                else
-                {
-                    var token = m_TokenPool.Pop();
-                    m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber} - {socket.AddressFamily}");
+                m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber}");
 
-                    token.Socket = e.AcceptSocket;
-                    token.Socket.SendTimeout = 5000;
-                    token.Socket.NoDelay = true;
+                token.Socket = e.AcceptSocket;
+                token.Socket.SendTimeout = 5000;
+                token.Socket.NoDelay = true;
 
-                    token.IsConnected = true;
-                    m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Connected));
-                    StartReceive(token);
-                }
+                token.IsConnected = true;
+                m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Connected));
+                StartReceive(token);
 
                 e.AcceptSocket = null;
                 StartAccept(socket, e);
             }
             else
             {
-                //close bad accepted socket
+                //we failed to receive new connection, let's close socket if there is
                 if (e.AcceptSocket != null)
                     e.AcceptSocket.Close();
 
@@ -154,7 +144,7 @@ namespace UnlitSocket
                 return;
             }
 
-            AsyncUserToken token;
+            UserToken token;
 
             if(!m_ConnectionDic.TryGetValue(connectionID, out token))
             {
@@ -171,13 +161,13 @@ namespace UnlitSocket
             Send(token.Socket, message);
         }
 
-        protected override void CloseSocket(AsyncUserToken token)
+        protected override void CloseSocket(UserToken token)
         {
             base.CloseSocket(token);
             var currentNumber = Interlocked.Decrement(ref m_CurrentConnectionCount);
             m_Logger?.Debug($"client { token.ConnectionID } has been disconnected from the server. There are {currentNumber} clients connected to the server");
             // decrement the counter keeping track of the total number of clients connected to the server
-            m_TokenPool.Push(token);
+            m_TokenPool.Enqueue(token);
         }
     }
 }

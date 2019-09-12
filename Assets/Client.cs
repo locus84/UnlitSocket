@@ -13,11 +13,11 @@ namespace UnlitSocket
         public IPEndPoint RemoteEndPoint { get; private set; }
         public ConnectionStatus Status { get; private set; } = ConnectionStatus.Disconnected;
 
-        AsyncUserToken m_Token;
+        UserToken m_Token;
 
         public Client(int clientID, int receiveBufferSize)
         {
-            m_Token = new AsyncUserToken(clientID);
+            m_Token = new UserToken(clientID);
             m_Token.ReceiveArg.Completed += ProcessReceive;
         }
 
@@ -87,7 +87,7 @@ namespace UnlitSocket
             catch { }
         }
 
-        protected override void CloseSocket(AsyncUserToken token)
+        protected override void CloseSocket(UserToken token)
         {
             Status = ConnectionStatus.Disconnected;
             base.CloseSocket(token);
