@@ -97,7 +97,7 @@ namespace UnlitSocket
             {
                 if (token.CurrentMessage != null)
                 {
-                    //return true means we have received all bytes
+                    //true means we have received all bytes for message
                     if (token.AppendReceivedBuffer(e.BytesTransferred)) 
                     {
                         m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
@@ -107,25 +107,29 @@ namespace UnlitSocket
                         token.CurrentMessage = null;
                     }
                 }
-                else 
+                else
                 {
-                    if(token.HandleLengthReceive(e.BytesTransferred))
+                    //true means we have received all bytes for length
+                    if (token.HandleLengthReceive(e.BytesTransferred))
                     {
+                        //now prepare a message to receive actual data
                         token.CurrentMessage = Message.Pop();
                         token.ReadyToReceiveMessage();
                     }
                 }
 
-                bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
-                if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
+                try
+                {
+                    bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
+                    if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
+                }
+                catch
+                {
+                    CloseSocket(token);
+                }
             }
             else
             {
-                if(token.CurrentMessage != null)
-                {
-                    token.CurrentMessage.Release();
-                    token.CurrentMessage = null;
-                }
                 CloseSocket(token);
             }
         }
@@ -147,14 +151,19 @@ namespace UnlitSocket
                         OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData);
                         receivedMessage.MessageData.Release();
                         break;
-                    default:
-                        throw new Exception("Unknown MessageType");
                 }
             }
         }
 
         protected virtual void CloseSocket(AsyncUserToken token)
         {
+            //were we receiving message? if ture, clear message
+            if (token.CurrentMessage != null)
+            {
+                token.CurrentMessage.Release();
+                token.CurrentMessage = null;
+            }
+
             // close the socket associated with the client
             try
             {
