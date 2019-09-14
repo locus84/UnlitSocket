@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
 
@@ -103,24 +104,41 @@ namespace UnlitSocket
                         while (s_AddedSockets.TryDequeue(out var newToken)) s_ReceiveLoopSockets.Add(newToken);
                         while (s_RemovedSockets.TryDequeue(out var removedToken)) s_ReceiveLoopSockets.Remove(removedToken);
                         UserToken currentToken;
-                        for (int i = 0; i < s_ReceiveLoopSockets.Count; i++)
+
+                        if(s_ReceiveLoopSockets.Count > 0)
                         {
-                            currentToken = s_ReceiveLoopSockets[i];
+                            var list = new SocketList();
+                            list.SetInnerList(s_ReceiveLoopSockets.Select(ut => ut.Socket).ToList());
                             try
                             {
-                                if (!currentToken.IsReceiving && currentToken.Socket.Available > 0)
-                                {
-                                    currentToken.IsReceiving = true;
-                                    bool isPending = currentToken.Socket.ReceiveAsync(currentToken.ReceiveArg);
-                                    if (!isPending) ProcessReceive(currentToken.Socket, currentToken.ReceiveArg);
-                                }
+                                Socket.Select(list, null, null, 100000);
                             }
-                            catch
+                            catch (System.Exception e)
                             {
-                                currentToken.Owner.CloseSocket(currentToken);
+                                m_Logger?.Debug(e.ToString());
                             }
                         }
-                        Thread.Sleep(1);
+                        Thread.Sleep(1000);
+
+
+                        //for (int i = 0; i < s_ReceiveLoopSockets.Count; i++)
+                        //{
+                        //    currentToken = s_ReceiveLoopSockets[i];
+                        //    try
+                        //    {
+                        //        if (!currentToken.IsReceiving && currentToken.Socket.Available > 0)
+                        //        {
+                        //            currentToken.IsReceiving = true;
+                        //            bool isPending = currentToken.Socket.ReceiveAsync(currentToken.ReceiveArg);
+                        //            if (!isPending) ProcessReceive(currentToken.Socket, currentToken.ReceiveArg);
+                        //        }
+                        //    }
+                        //    catch
+                        //    {
+                        //        currentToken.Owner.CloseSocket(currentToken);
+                        //    }
+                        //}
+                        //Thread.Sleep(1);
                     }
                 });
             }
