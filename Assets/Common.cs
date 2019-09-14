@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
 namespace UnlitSocket
@@ -14,8 +15,6 @@ namespace UnlitSocket
         void Debug(string str);
         void Exception(string exception);
     }
-
-
 
     [StructLayout(LayoutKind.Explicit)]
     internal struct UIntFloat

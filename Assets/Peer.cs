@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Threading;
 
 namespace UnlitSocket
 {
@@ -16,6 +17,12 @@ namespace UnlitSocket
         protected ILogReceiver m_Logger;
 
         private List<ReceivedMessage> m_ReceiveMesageCache = new List<ReceivedMessage>(10);
+        private static List<UserToken> s_ReceiveLoopSockets = new List<UserToken>();
+        protected static ConcurrentQueue<UserToken> s_RemovedSockets = new ConcurrentQueue<UserToken>();
+        protected static ConcurrentQueue<UserToken> s_AddedSockets = new ConcurrentQueue<UserToken>();
+
+        public bool IsRunning { get; private set; } = false;
+        private static volatile int s_RunRequestCount = 0;
 
         protected struct ReceivedMessage
         {
@@ -79,18 +86,52 @@ namespace UnlitSocket
         protected void StartReceive(UserToken token)
         {
             token.ReadyToReceiveLength();
-            try
+            s_AddedSockets.Enqueue(token);
+        }
+
+        protected void StartReceiveLoop()
+        {
+            var startCount = Interlocked.Increment(ref s_RunRequestCount);
+            IsRunning = true;
+
+            if (startCount == 1)
             {
-                bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
-                if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
-            }
-            catch
-            {
-                CloseSocket(token);
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    while (true)
+                    {
+                        while (s_AddedSockets.TryDequeue(out var newToken)) s_ReceiveLoopSockets.Add(newToken);
+                        while (s_RemovedSockets.TryDequeue(out var removedToken)) s_ReceiveLoopSockets.Remove(removedToken);
+                        UserToken currentToken;
+                        for (int i = 0; i < s_ReceiveLoopSockets.Count; i++)
+                        {
+                            currentToken = s_ReceiveLoopSockets[i];
+                            try
+                            {
+                                if (!currentToken.IsReceiving && currentToken.Socket.Available > 0)
+                                {
+                                    currentToken.IsReceiving = true;
+                                    bool isPending = currentToken.Socket.ReceiveAsync(currentToken.ReceiveArg);
+                                    if (!isPending) ProcessReceive(currentToken.Socket, currentToken.ReceiveArg);
+                                }
+                            }
+                            catch
+                            {
+                                currentToken.Owner.CloseSocket(currentToken);
+                            }
+                        }
+                        Thread.Sleep(1);
+                    }
+                });
             }
         }
 
-        protected void ProcessReceive(object sender, SocketAsyncEventArgs e)
+        protected void StopReceiveLoop()
+        {
+            IsRunning = false;
+        }
+
+        protected static void ProcessReceive(object sender, SocketAsyncEventArgs e)
         {
             var token = e.UserToken as UserToken;
             if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
@@ -100,7 +141,7 @@ namespace UnlitSocket
                     //true means we have received all bytes for message
                     if (token.AppendReceivedBuffer(e.BytesTransferred)) 
                     {
-                        m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
+                        token.Owner.m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
 
                         //clear message
                         token.ReadyToReceiveLength();
@@ -120,17 +161,24 @@ namespace UnlitSocket
 
                 try
                 {
-                    bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
-                    if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
+                    if(token.Socket.Available > 0)
+                    {
+                        bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
+                        if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
+                    }
+                    else
+                    {
+                        token.IsReceiving = false;
+                    }
                 }
                 catch
                 {
-                    CloseSocket(token);
+                    token.Owner.CloseSocket(token);
                 }
             }
             else
             {
-                CloseSocket(token);
+                token.Owner.CloseSocket(token);
             }
         }
 
@@ -189,6 +237,9 @@ namespace UnlitSocket
                 token.CurrentMessage.Release();
                 token.CurrentMessage = null;
             }
+
+            s_RemovedSockets.Enqueue(token);
+            token.IsReceiving = false;
 
             // close the socket associated with the client
             try

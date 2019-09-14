@@ -12,8 +12,6 @@ namespace UnlitSocket
         Socket m_ListenSocket;
         int m_CurrentConnectionCount;
         int m_AcceptedCount;
-        public bool IsRunning { get; private set; } = false;
-
         public int Port { get; private set; }
 
         ConcurrentQueue<UserToken> m_TokenPool;
@@ -33,7 +31,7 @@ namespace UnlitSocket
             //init buffer, use given value in initializer
             for (int i = 0; i < m_MaxConnectionCount; i++)
             {
-                var token = new UserToken(i);
+                var token = new UserToken(i, this);
                 token.ReceiveArg.Completed += ProcessReceive;
                 m_ConnectionDic.Add(i, token);
                 m_TokenPool.Enqueue(token);
@@ -58,8 +56,8 @@ namespace UnlitSocket
             var acceptEventArg = new SocketAsyncEventArgs();
             acceptEventArg.Completed += ProcessAccept;
 
+            StartReceiveLoop();
             StartAccept(m_ListenSocket, acceptEventArg);
-            IsRunning = true;
         }
 
         // Begins an operation to accept a connection request from the client 
@@ -105,7 +103,7 @@ namespace UnlitSocket
         {
             if (!IsRunning) return;
 
-            IsRunning = false;
+            StopReceiveLoop();
             m_ListenSocket?.Close();
             foreach(var kv in m_ConnectionDic)
             {

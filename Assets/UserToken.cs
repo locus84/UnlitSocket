@@ -10,8 +10,11 @@ namespace UnlitSocket
         int m_ReadTotal = 0;
         int m_SizeTotal = 0;
         int m_InitialBufferCount = 0;
+
+        public volatile bool IsReceiving = false;
         public int ConnectionID { get; private set; }
         public Socket Socket { get; set; }
+        public Peer Owner { get; private set; }
 
         public byte[] SizeReadBuffer = new byte[2];
         public SocketAsyncEventArgs ReceiveArg { get; private set; }
@@ -56,12 +59,13 @@ namespace UnlitSocket
             return false;
         }
 
-        public UserToken(int id)
+        public UserToken(int id, Peer ownerPeer)
         {
             ConnectionID = id;
             ReceiveArg = new SocketAsyncEventArgs();
             ReceiveArg.BufferList = new List<ArraySegment<byte>>();
             ReceiveArg.UserToken = this;
+            Owner = ownerPeer;
         }
     }
 }

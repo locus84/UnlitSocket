@@ -101,7 +101,7 @@ public class TestManager : MonoBehaviour
 
         if (GUILayout.Button("Connect More"))
         {
-            for (int i = 0; i < 100; i++)
+            for (int i = 0; i < 10; i++)
             {
                 var newClient = new Client(-1, 16);
                 newClient.SetLogger(new TestLogger());

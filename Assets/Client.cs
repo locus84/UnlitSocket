@@ -9,7 +9,6 @@ namespace UnlitSocket
     public class Client : Peer
     {
         public int ClientID => m_Token.ConnectionID;
-
         public IPEndPoint RemoteEndPoint { get; private set; }
         public ConnectionStatus Status { get; private set; } = ConnectionStatus.Disconnected;
 
@@ -17,7 +16,7 @@ namespace UnlitSocket
 
         public Client(int clientID, int receiveBufferSize)
         {
-            m_Token = new UserToken(clientID);
+            m_Token = new UserToken(clientID, this);
             m_Token.ReceiveArg.Completed += ProcessReceive;
         }
 
@@ -32,12 +31,13 @@ namespace UnlitSocket
             m_Token.Socket = new Socket(remoteEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             m_Token.Socket.SendTimeout = 5000;
             m_Token.Socket.NoDelay = true;
-
             var acceptEventArg = new SocketAsyncEventArgs();
             acceptEventArg.Completed += ProcessConnect;
             RemoteEndPoint = remoteEndPoint;
             acceptEventArg.RemoteEndPoint = remoteEndPoint;
             Status = ConnectionStatus.Connecting;
+
+            StartReceiveLoop();
             bool isPending = m_Token.Socket.ConnectAsync(acceptEventArg);
             if (!isPending) ProcessConnect(m_Token.Socket, acceptEventArg);
         }
@@ -91,6 +91,7 @@ namespace UnlitSocket
         {
             Status = ConnectionStatus.Disconnected;
             base.CloseSocket(token);
+            StopReceiveLoop();
         }
     }
 }
