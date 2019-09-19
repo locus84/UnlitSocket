@@ -30,6 +30,7 @@ namespace UnlitSocket
             }
             else
             {
+                //temp socket holder
                 args.AcceptSocket = socket;
                 s_ReceivePostBag.Enqueue(args);
 
@@ -49,6 +50,9 @@ namespace UnlitSocket
         static void ReceiveThreadLoop(object state)
         {
             List<SocketAsyncEventArgs> observingPosts = new List<SocketAsyncEventArgs>();
+
+            int pollCount = 0;
+
             while (true)
             {
                 while (s_ReceivePostBag.TryDequeue(out var result))
@@ -57,6 +61,7 @@ namespace UnlitSocket
                 for (int i = 0; i < observingPosts.Count; i++)
                 {
                     var currentPost = observingPosts[i];
+                    pollCount++;
 
                     try
                     {
@@ -87,8 +92,14 @@ namespace UnlitSocket
                         observingPosts.RemoveAt(observingPosts.Count - 1);
                         i--;
                     }
+
+                    if (pollCount > 500)
+                    {
+                        pollCount = 0;
+                        Thread.Sleep(1);
+                    }
                 }
-                Thread.Sleep(1);
+                
             }
         }
 
