@@ -88,7 +88,7 @@ namespace UnlitSocket
                         i--;
                     }
                 }
-                Thread.Sleep(3);
+                Thread.Sleep(1);
             }
         }
 
