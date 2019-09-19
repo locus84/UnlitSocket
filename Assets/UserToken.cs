@@ -12,6 +12,7 @@ namespace UnlitSocket
         int m_InitialBufferCount = 0;
         public int ConnectionID { get; private set; }
         public Socket Socket { get; set; }
+        public int LastTransferCount;
 
         public byte[] SizeReadBuffer = new byte[2];
         public SocketAsyncEventArgs ReceiveArg { get; private set; }

@@ -129,10 +129,19 @@ public class TestManager : MonoBehaviour
         {
             m_Server.Stop();
         }
+
+
+        if (GUILayout.Button($"Toggle RunUpdate : {m_UpdatePeers}"))
+        {
+            m_UpdatePeers = !m_UpdatePeers;
+        }
     }
+
+    bool m_UpdatePeers = false;
 
     private void Update()
     {
+        if (!m_UpdatePeers) return;
         m_Server.Update();
         for (int i = 0; i < m_Clients.Count; i++)
             m_Clients[i].Update();

@@ -1,4 +1,7 @@
-﻿using System;
+﻿#if UNITY_5_3_OR_NEWER
+#define UNITY_RECEIVE
+#endif
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
@@ -81,7 +84,11 @@ namespace UnlitSocket
             token.ReadyToReceiveLength();
             try
             {
+#if UNITY_RECEIVE
+                bool isPending = token.Socket.ReceiveAsyncWithMono(token.ReceiveArg);
+#else
                 bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
+#endif
                 if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
             }
             catch
@@ -93,12 +100,18 @@ namespace UnlitSocket
         protected void ProcessReceive(object sender, SocketAsyncEventArgs e)
         {
             var token = e.UserToken as UserToken;
-            if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
+
+#if UNITY_RECEIVE
+            var transferCount = token.LastTransferCount;
+#else
+            var transferCount = e.BytesTransferred;
+#endif
+            if (transferCount > 0 && e.SocketError == SocketError.Success)
             {
                 if (token.CurrentMessage != null)
                 {
                     //true means we have received all bytes for message
-                    if (token.AppendReceivedBuffer(e.BytesTransferred)) 
+                    if (token.AppendReceivedBuffer(transferCount)) 
                     {
                         m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
 
@@ -110,7 +123,7 @@ namespace UnlitSocket
                 else
                 {
                     //true means we have received all bytes for length
-                    if (token.HandleLengthReceive(e.BytesTransferred))
+                    if (token.HandleLengthReceive(transferCount))
                     {
                         //now prepare a message to receive actual data
                         token.CurrentMessage = Message.Pop();
@@ -120,7 +133,11 @@ namespace UnlitSocket
 
                 try
                 {
+#if UNITY_RECEIVE
+                    bool isPending = token.Socket.ReceiveAsyncWithMono(token.ReceiveArg);
+#else
                     bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
+#endif
                     if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
                 }
                 catch
