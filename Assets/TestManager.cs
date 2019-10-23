@@ -15,6 +15,10 @@ public class TestManager : MonoBehaviour
 
     void Start()
     {
+        System.Threading.ThreadPool.SetMaxThreads(8000, 5000);
+        System.Threading.ThreadPool.GetAvailableThreads(out var worker, out var comPort);
+        Debug.Log($"worker {worker} comPort {comPort}");
+
         m_Server = new Server(10000);
         m_Server.Init();
         m_Server.SetLogger(new TestLogger());
@@ -22,15 +26,6 @@ public class TestManager : MonoBehaviour
         m_Server.OnConnected += id => m_ConnectedClients.Add(id);
         m_Server.OnDisconnected += id => m_ConnectedClients.Remove(id);
         m_Server.Start(54321);
-
-        //for (int i = 0; i < 1000; i++)
-        //{
-        //    var newClient = new Client(-1, 16);
-        //    newClient.SetLogger(new TestLogger());
-        //    newClient.OnDataReceived += OnClientDataReceived;
-        //    newClient.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 54321));
-        //    m_Clients.Add(newClient);
-        //}
     }
 
     private void OnClientDataReceived(int connectionID, Message message)
@@ -128,6 +123,11 @@ public class TestManager : MonoBehaviour
         if (m_Server.IsRunning && GUILayout.Button("Stop Server"))
         {
             m_Server.Stop();
+        }
+
+        using (var p = System.Diagnostics.Process.GetCurrentProcess())
+        {
+            GUILayout.Label($"ThreadCount : {p.Threads.Count}");
         }
     }
 

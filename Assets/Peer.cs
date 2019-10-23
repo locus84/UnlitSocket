@@ -2,11 +2,14 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 
 namespace UnlitSocket
 {
     public class Peer
     {
+        static bool s_IsMono { get; } = Type.GetType("Mono.Runtime") != null;
+
         public ConnectionStatusChangeDelegate OnConnected;
         public ConnectionStatusChangeDelegate OnDisconnected;
         public DataReceivedDelegate OnDataReceived;
@@ -81,14 +84,50 @@ namespace UnlitSocket
             token.ReadyToReceiveLength();
             try
             {
-                bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
-                if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
+                Select(new List<Socket>() { token.Socket }, 1000);
+                token.Socket.BeginReceive(token.ReceiveArg.BufferList, SocketFlags.None, new AsyncCallback(cb), token);
+                //bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
+                //if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
             }
             catch
             {
                 CloseSocket(token);
             }
         }
+
+        private void cb(IAsyncResult ar)
+        {
+            if (ar.IsCompleted)
+            {
+                ((UserToken)ar.AsyncState).Socket.EndReceive(ar);
+
+            }
+        }
+
+
+        public static void Select(List<Socket> sockets, int microSeconds)
+        {
+            int error;
+            sockets.Add(null);
+            sockets.Add(null);
+            sockets.Add(null);
+            sockets.Add(null);
+
+            var socket = sockets.ToArray();
+            try
+            {
+                SocketSelector.Select(ref socket, microSeconds, out error);
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogException(e);
+            }
+
+
+            UnityEngine.Debug.Log($"{socket[0]} {socket[1]} {socket[2]} {socket[3]} {socket[4]}");
+
+        }
+
 
         protected void ProcessReceive(object sender, SocketAsyncEventArgs e)
         {

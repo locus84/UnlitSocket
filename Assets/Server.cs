@@ -48,6 +48,7 @@ namespace UnlitSocket
             // create the socket which listens for incoming connections
             m_ListenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
             m_ListenSocket.NoDelay = true;
+            m_ListenSocket.Blocking = false;
             m_ListenSocket.SendBufferSize = 512;
             m_ListenSocket.ReceiveBufferSize = 512;
             m_ListenSocket.SendTimeout = 5000;
