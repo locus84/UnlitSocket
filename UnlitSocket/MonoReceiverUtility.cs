@@ -130,10 +130,8 @@ namespace UnlitSocket
 
         class OnCompleteInvoker : SocketAsyncEventArgs
         {
-
             protected override void OnCompleted(SocketAsyncEventArgs e)
             {
-                UnityEngine.Debug.Log("Complete!");
                 base.OnCompleted(e);
             }
 

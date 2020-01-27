@@ -6,19 +6,21 @@ namespace UnlitSocket
 {
     public class UserToken
     {
-        public bool IsConnected = false;
+        internal IConnection Connection;
+        public bool IsConnected { get; internal set; } = false;
         int m_ReadTotal = 0;
         int m_SizeTotal = 0;
         int m_InitialBufferCount = 0;
         public int ConnectionID { get; private set; }
-        public Socket Socket { get; set; }
-        public int LastTransferCount;
+        internal Socket Socket { get; set; }
+        internal int LastTransferCount;
 
-        public byte[] SizeReadBuffer = new byte[2];
-        public SocketAsyncEventArgs ReceiveArg { get; private set; }
-        public Message CurrentMessage = null;
+        internal byte[] SizeReadBuffer = new byte[2];
+        internal SocketAsyncEventArgs ReceiveArg { get; private set; }
+        internal Message CurrentMessage = null;
+        internal Server OwnerServer;
 
-        public void ReadyToReceiveLength()
+        internal void ReadyToReceiveLength()
         {
             ReceiveArg.BufferList.Clear();
             ReceiveArg.BufferList.Add(new ArraySegment<byte>(SizeReadBuffer));
@@ -26,7 +28,7 @@ namespace UnlitSocket
             m_ReadTotal = 0;
         }
 
-        public bool HandleLengthReceive(int byteTransferred)
+        internal bool HandleLengthReceive(int byteTransferred)
         {
             if (m_ReadTotal + byteTransferred == SizeReadBuffer.Length)
             {
@@ -41,14 +43,14 @@ namespace UnlitSocket
             return false;
         }
 
-        public void ReadyToReceiveMessage()
+        internal void ReadyToReceiveMessage()
         {
             CurrentMessage.BindToArgsReceive(ReceiveArg, m_SizeTotal);
             m_ReadTotal = 0;
             m_InitialBufferCount = ReceiveArg.BufferList.Count;
         }
 
-        public bool AppendReceivedBuffer(int receiveCount)
+        internal bool AppendReceivedBuffer(int receiveCount)
         {
             m_ReadTotal += receiveCount;
             //received properly
@@ -57,9 +59,28 @@ namespace UnlitSocket
             return false;
         }
 
-        public UserToken(int id)
+        internal UserToken(int id)
         {
             ConnectionID = id;
+            ReceiveArg = new SocketAsyncEventArgs();
+            ReceiveArg.BufferList = new List<ArraySegment<byte>>();
+            ReceiveArg.UserToken = this;
+        }
+
+        internal UserToken(int id, Server server)
+        {
+            OwnerServer = server;
+            ConnectionID = id;
+            ReceiveArg = new SocketAsyncEventArgs();
+            ReceiveArg.BufferList = new List<ArraySegment<byte>>();
+            ReceiveArg.UserToken = this;
+        }
+
+        internal UserToken(int id, Server server, IConnection connection)
+        {
+            OwnerServer = server;
+            ConnectionID = id;
+            Connection = connection;
             ReceiveArg = new SocketAsyncEventArgs();
             ReceiveArg.BufferList = new List<ArraySegment<byte>>();
             ReceiveArg.UserToken = this;

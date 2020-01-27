@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 
 namespace UnlitSocket
 {
@@ -116,7 +115,16 @@ namespace UnlitSocket
                     //true means we have received all bytes for message
                     if (token.AppendReceivedBuffer(transferCount)) 
                     {
-                        m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
+                        if(token.Connection != null)
+                        {
+                            var recycle = true;
+                            token.Connection.OnDataReceived(token.CurrentMessage, ref recycle);
+                            if (recycle) token.CurrentMessage.Release();
+                        }
+                        else
+                        {
+                            m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
+                        }
 
                         //clear message
                         token.ReadyToReceiveLength();
@@ -182,6 +190,7 @@ namespace UnlitSocket
 
         protected void InvokeMessageCallbacks(ReceivedMessage receivedMessage)
         {
+            bool recycle = true;
             try
             {
                 switch (receivedMessage.Type)
@@ -193,12 +202,17 @@ namespace UnlitSocket
                         OnDisconnected?.Invoke(receivedMessage.ConnectionID);
                         break;
                     case MessageType.Data:
-                        OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData);
+                        {
+                            OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData, ref recycle);
+                        }
                         break;
                 }
             }
-            catch { throw; }
-            finally { receivedMessage.MessageData?.Release(); }
+            catch(Exception e) { m_Logger.Exception(e); }
+            finally { 
+                if(recycle && receivedMessage.MessageData != null) 
+                    receivedMessage.MessageData.Release(); 
+            }
         }
 
         protected virtual void CloseSocket(UserToken token)
@@ -220,7 +234,33 @@ namespace UnlitSocket
             token.Socket.Close();
             token.Socket = null;
             token.IsConnected = false;
-            m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Disconnected));
+            if(token.Connection != null)
+            {
+                try
+                {
+                    token.Connection.OnDisconnected();
+                }
+                catch(Exception e)
+                {
+                    m_Logger.Exception(e);
+                }
+            }
+            else
+            {
+                m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Disconnected));
+            }
+        }
+
+        protected static void SetKeepAlive(Socket socket, bool on, uint interval, uint retryInterval)
+        {
+            int size = System.Runtime.InteropServices.Marshal.SizeOf(new uint());
+
+            var inOptionValues = new byte[size * 3];
+            BitConverter.GetBytes((uint)(on ? 1 : 0)).CopyTo(inOptionValues, 0);
+            BitConverter.GetBytes(interval).CopyTo(inOptionValues, size);
+            BitConverter.GetBytes(retryInterval).CopyTo(inOptionValues, size * 2);
+
+            socket.IOControl(IOControlCode.KeepAliveValues, inOptionValues, null);
         }
     }
 }

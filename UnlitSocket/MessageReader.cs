@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using UnityEngine;
 
 namespace UnlitSocket
 {
@@ -179,40 +178,40 @@ namespace UnlitSocket
             throw new IndexOutOfRangeException("ReadPackedUInt64() failure: " + a0);
         }
 
-        public static Vector2 ReadVector2(this Message msg) => new Vector2(msg.ReadSingle(), msg.ReadSingle());
-        public static Vector3 ReadVector3(this Message msg) => new Vector3(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
-        public static Vector4 ReadVector4(this Message msg) => new Vector4(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
-        public static Vector2Int ReadVector2Int(this Message msg) => new Vector2Int(msg.ReadPackedInt32(), msg.ReadPackedInt32());
-        public static Vector3Int ReadVector3Int(this Message msg) => new Vector3Int(msg.ReadPackedInt32(), msg.ReadPackedInt32(), msg.ReadPackedInt32());
-        public static Color ReadColor(this Message msg) => new Color(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
-        public static Color32 ReadColor32(this Message msg) => new Color32(msg.ReadByte(), msg.ReadByte(), msg.ReadByte(), msg.ReadByte());
-        public static Quaternion ReadQuaternion(this Message msg) => new Quaternion(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
-        public static Rect ReadRect(this Message msg) => new Rect(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
-        public static Plane ReadPlane(this Message msg) => new Plane(msg.ReadVector3(), msg.ReadSingle());
-        public static Ray ReadRay(this Message msg) => new Ray(msg.ReadVector3(), msg.ReadVector3());
+        //public static Vector2 ReadVector2(this Message msg) => new Vector2(msg.ReadSingle(), msg.ReadSingle());
+        //public static Vector3 ReadVector3(this Message msg) => new Vector3(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
+        //public static Vector4 ReadVector4(this Message msg) => new Vector4(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
+        //public static Vector2Int ReadVector2Int(this Message msg) => new Vector2Int(msg.ReadPackedInt32(), msg.ReadPackedInt32());
+        //public static Vector3Int ReadVector3Int(this Message msg) => new Vector3Int(msg.ReadPackedInt32(), msg.ReadPackedInt32(), msg.ReadPackedInt32());
+        //public static Color ReadColor(this Message msg) => new Color(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
+        //public static Color32 ReadColor32(this Message msg) => new Color32(msg.ReadByte(), msg.ReadByte(), msg.ReadByte(), msg.ReadByte());
+        //public static Quaternion ReadQuaternion(this Message msg) => new Quaternion(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
+        //public static Rect ReadRect(this Message msg) => new Rect(msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle(), msg.ReadSingle());
+        //public static Plane ReadPlane(this Message msg) => new Plane(msg.ReadVector3(), msg.ReadSingle());
+        //public static Ray ReadRay(this Message msg) => new Ray(msg.ReadVector3(), msg.ReadVector3());
 
-        public static Matrix4x4 ReadMatrix4x4(this Message msg)
-        {
-            return new Matrix4x4
-            {
-                m00 = msg.ReadSingle(),
-                m01 = msg.ReadSingle(),
-                m02 = msg.ReadSingle(),
-                m03 = msg.ReadSingle(),
-                m10 = msg.ReadSingle(),
-                m11 = msg.ReadSingle(),
-                m12 = msg.ReadSingle(),
-                m13 = msg.ReadSingle(),
-                m20 = msg.ReadSingle(),
-                m21 = msg.ReadSingle(),
-                m22 = msg.ReadSingle(),
-                m23 = msg.ReadSingle(),
-                m30 = msg.ReadSingle(),
-                m31 = msg.ReadSingle(),
-                m32 = msg.ReadSingle(),
-                m33 = msg.ReadSingle()
-            };
-        }
+        //public static Matrix4x4 ReadMatrix4x4(this Message msg)
+        //{
+        //    return new Matrix4x4
+        //    {
+        //        m00 = msg.ReadSingle(),
+        //        m01 = msg.ReadSingle(),
+        //        m02 = msg.ReadSingle(),
+        //        m03 = msg.ReadSingle(),
+        //        m10 = msg.ReadSingle(),
+        //        m11 = msg.ReadSingle(),
+        //        m12 = msg.ReadSingle(),
+        //        m13 = msg.ReadSingle(),
+        //        m20 = msg.ReadSingle(),
+        //        m21 = msg.ReadSingle(),
+        //        m22 = msg.ReadSingle(),
+        //        m23 = msg.ReadSingle(),
+        //        m30 = msg.ReadSingle(),
+        //        m31 = msg.ReadSingle(),
+        //        m32 = msg.ReadSingle(),
+        //        m33 = msg.ReadSingle()
+        //    };
+        //}
 
         public static Guid ReadGuid(this Message msg)
         {

@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Net;
 using System.Collections.Concurrent;
+using System;
 
 namespace UnlitSocket
 {
@@ -11,10 +12,12 @@ namespace UnlitSocket
         private int m_MaxConnectionCount; //maximum connection
         Socket m_ListenSocket;
         int m_CurrentConnectionCount;
-        int m_AcceptedCount;
         public bool IsRunning { get; private set; } = false;
-
         public int Port { get; private set; }
+
+        //initial hellomessage Buffer
+        static byte[] s_AcceptedMessage = new byte[] { 1 };
+        static byte[] s_RejectedMessage = new byte[] { 0 };
 
         ConcurrentQueue<UserToken> m_TokenPool;
         Dictionary<int, UserToken> m_ConnectionDic;
@@ -33,7 +36,20 @@ namespace UnlitSocket
             //init buffer, use given value in initializer
             for (int i = 0; i < m_MaxConnectionCount; i++)
             {
-                var token = new UserToken(i);
+                var token = new UserToken(i, this);
+                token.ReceiveArg.Completed += ProcessReceive;
+                m_ConnectionDic.Add(i, token);
+                m_TokenPool.Enqueue(token);
+            }
+        }
+
+        public void Init<T>() where T : IConnection, new()
+        {
+            //init buffer, use given value in initializer
+            for (int i = 0; i < m_MaxConnectionCount; i++)
+            {
+                var token = new UserToken(i, this, new T());
+                token.Connection.UserToken = token;
                 token.ReceiveArg.Completed += ProcessReceive;
                 m_ConnectionDic.Add(i, token);
                 m_TokenPool.Enqueue(token);
@@ -64,41 +80,60 @@ namespace UnlitSocket
         }
 
         // Begins an operation to accept a connection request from the client 
-        private void StartAccept(Socket socket, SocketAsyncEventArgs acceptEventArg)
+        private void StartAccept(Socket socket, SocketAsyncEventArgs args)
         {
-            bool isPending = false;
-            isPending = socket.AcceptAsync(acceptEventArg);
-            if (!isPending) ProcessAccept(socket, acceptEventArg);
+            if(!socket.AcceptAsync(args)) ProcessAccept(socket, args);
         }
 
-        private void ProcessAccept(object sender, SocketAsyncEventArgs e)
+        private void ProcessAccept(object sender, SocketAsyncEventArgs args)
         {
-            if (e.SocketError == SocketError.Success && m_TokenPool.TryDequeue(out var token))
+            if (args.SocketError == SocketError.Success && m_TokenPool.TryDequeue(out var token))
             {
                 var socket = sender as Socket;
                 var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
-                m_AcceptedCount++;
                 m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber}");
 
-                token.Socket = e.AcceptSocket;
+                token.Socket = args.AcceptSocket;
                 token.Socket.SendTimeout = 5000;
                 token.Socket.NoDelay = true;
-
+                SetKeepAlive(token.Socket, true, 30000, 5000);
+                //send initial message that indicates socket is accepted
+                token.Socket.Send(s_AcceptedMessage);
                 token.IsConnected = true;
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Connected));
+
+                if (token.Connection != null)
+                {
+                    try
+                    {
+                        token.Connection.OnConnected();
+                    }
+                    catch (Exception e)
+                    {
+                        m_Logger.Exception(e);
+                    }
+                } 
+                else
+                {
+                    m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Connected));
+                }
                 StartReceive(token);
 
-                e.AcceptSocket = null;
-                StartAccept(socket, e);
+                args.AcceptSocket = null;
+                StartAccept(socket, args);
             }
             else
             {
                 //we failed to receive new connection, let's close socket if there is
-                if (e.AcceptSocket != null)
-                    e.AcceptSocket.Close();
+                if (args.AcceptSocket != null)
+                {
+                    //send initial message that socket is rejected
+                    args.AcceptSocket.Send(s_RejectedMessage);
+                    args.AcceptSocket.Close();
+                    args.AcceptSocket = null;
+                }
 
                 if (IsRunning)
-                    StartAccept((Socket)sender, e);
+                    StartAccept((Socket)sender, args);
             }
         }
 
@@ -123,9 +158,26 @@ namespace UnlitSocket
         /// <summary>
         /// Send to multiple recipients without creating multiple Message object
         /// </summary>
-        public void Send(IList<int> recipients, Message message)
+        public void Send(IList<IConnection> recipients, Message message)
         {
             for(int i = 0; i < recipients.Count; i++)
+            {
+                //hold message not to be recycled, one send release message once.
+                message.Retain();
+                Send(recipients[i].UserToken, message);
+            }
+
+            //now release retained by pop()
+            message.Release();
+        }
+
+
+        /// <summary>
+        /// Send to multiple recipients without creating multiple Message object
+        /// </summary>
+        public void Send(IList<int> recipients, Message message)
+        {
+            for (int i = 0; i < recipients.Count; i++)
             {
                 //hold message not to be recycled, one send release message once.
                 message.Retain();
@@ -162,6 +214,51 @@ namespace UnlitSocket
             }
 
             Send(token.Socket, message);
+        }
+
+
+        /// <summary>
+        /// Send to one client
+        /// </summary>
+        public void Send(UserToken token, Message message)
+        {
+            if (message.Position == 0)
+            {
+                message.Release();
+                return;
+            }
+
+            if (!token.IsConnected)
+            {
+                message.Release();
+                return;
+            }
+
+            Send(token.Socket, message);
+        }
+
+        /// <summary>
+        /// Disconnect client
+        /// </summary>
+        public void Disconnect(UserToken token)
+        {
+            try
+            {
+                var socket = token.Socket;
+                if (socket != null) socket.Disconnect(false);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Disconnect client
+        /// </summary>
+        public void Disconnect(int connectionID)
+        {
+            if (m_ConnectionDic.TryGetValue(connectionID, out var token))
+            {
+                Disconnect(token);
+            }
         }
 
         protected override void CloseSocket(UserToken token)

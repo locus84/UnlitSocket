@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.Text;
-using UnityEngine;
 
 namespace UnlitSocket
 {
@@ -222,104 +220,104 @@ namespace UnlitSocket
             }
         }
 
-        public static void WriteVector2(this Message msg, Vector2 value)
-        {
-            msg.WriteSingle(value.x);
-            msg.WriteSingle(value.y);
-        }
+        //public static void WriteVector2(this Message msg, Vector2 value)
+        //{
+        //    msg.WriteSingle(value.x);
+        //    msg.WriteSingle(value.y);
+        //}
 
-        public static void WriteVector3(this Message msg, Vector3 value)
-        {
-            msg.WriteSingle(value.y);
-            msg.WriteSingle(value.x);
-            msg.WriteSingle(value.z);
-        }
+        //public static void WriteVector3(this Message msg, Vector3 value)
+        //{
+        //    msg.WriteSingle(value.x);
+        //    msg.WriteSingle(value.y);
+        //    msg.WriteSingle(value.z);
+        //}
 
-        public static void WriteVector4(this Message msg, Vector4 value)
-        {
-            msg.WriteSingle(value.x);
-            msg.WriteSingle(value.y);
-            msg.WriteSingle(value.z);
-            msg.WriteSingle(value.w);
-        }
+        //public static void WriteVector4(this Message msg, Vector4 value)
+        //{
+        //    msg.WriteSingle(value.x);
+        //    msg.WriteSingle(value.y);
+        //    msg.WriteSingle(value.z);
+        //    msg.WriteSingle(value.w);
+        //}
 
-        public static void WriteVector2Int(this Message msg, Vector2Int value)
-        {
-            msg.WritePackedInt32(value.x);
-            msg.WritePackedInt32(value.y);
-        }
+        //public static void WriteVector2Int(this Message msg, Vector2Int value)
+        //{
+        //    msg.WritePackedInt32(value.x);
+        //    msg.WritePackedInt32(value.y);
+        //}
 
-        public static void WriteVector3Int(this Message msg, Vector3Int value)
-        {
-            msg.WritePackedInt32(value.x);
-            msg.WritePackedInt32(value.y);
-            msg.WritePackedInt32(value.z);
-        }
+        //public static void WriteVector3Int(this Message msg, Vector3Int value)
+        //{
+        //    msg.WritePackedInt32(value.x);
+        //    msg.WritePackedInt32(value.y);
+        //    msg.WritePackedInt32(value.z);
+        //}
 
-        public static void WriteColor(this Message msg, Color value)
-        {
-            msg.WriteSingle(value.r);
-            msg.WriteSingle(value.g);
-            msg.WriteSingle(value.b);
-            msg.WriteSingle(value.a);
-        }
+        //public static void WriteColor(this Message msg, Color value)
+        //{
+        //    msg.WriteSingle(value.r);
+        //    msg.WriteSingle(value.g);
+        //    msg.WriteSingle(value.b);
+        //    msg.WriteSingle(value.a);
+        //}
 
-        public static void WriteColor32(this Message msg, Color32 value)
-        {
-            msg.EnsureSize(4);
-            msg.WriteByteNoCheck(value.r);
-            msg.WriteByteNoCheck(value.g);
-            msg.WriteByteNoCheck(value.b);
-            msg.WriteByteNoCheck(value.a);
-        }
+        //public static void WriteColor32(this Message msg, Color32 value)
+        //{
+        //    msg.EnsureSize(4);
+        //    msg.WriteByteNoCheck(value.r);
+        //    msg.WriteByteNoCheck(value.g);
+        //    msg.WriteByteNoCheck(value.b);
+        //    msg.WriteByteNoCheck(value.a);
+        //}
 
-        public static void WriteQuaternion(this Message msg, Quaternion value)
-        {
-            msg.WriteSingle(value.x);
-            msg.WriteSingle(value.y);
-            msg.WriteSingle(value.z);
-            msg.WriteSingle(value.w);
-        }
+        //public static void WriteQuaternion(this Message msg, Quaternion value)
+        //{
+        //    msg.WriteSingle(value.x);
+        //    msg.WriteSingle(value.y);
+        //    msg.WriteSingle(value.z);
+        //    msg.WriteSingle(value.w);
+        //}
 
-        public static void WriteRect(this Message msg, Rect value)
-        {
-            msg.WriteSingle(value.xMin);
-            msg.WriteSingle(value.yMin);
-            msg.WriteSingle(value.width);
-            msg.WriteSingle(value.height);
-        }
+        //public static void WriteRect(this Message msg, Rect value)
+        //{
+        //    msg.WriteSingle(value.xMin);
+        //    msg.WriteSingle(value.yMin);
+        //    msg.WriteSingle(value.width);
+        //    msg.WriteSingle(value.height);
+        //}
 
-        public static void WritePlane(this Message msg, Plane value)
-        {
-            msg.WriteVector3(value.normal);
-            msg.WriteSingle(value.distance);
-        }
+        //public static void WritePlane(this Message msg, Plane value)
+        //{
+        //    msg.WriteVector3(value.normal);
+        //    msg.WriteSingle(value.distance);
+        //}
 
-        public static void WriteRay(this Message msg, Ray value)
-        {
-            msg.WriteVector3(value.origin);
-            msg.WriteVector3(value.direction);
-        }
+        //public static void WriteRay(this Message msg, Ray value)
+        //{
+        //    msg.WriteVector3(value.origin);
+        //    msg.WriteVector3(value.direction);
+        //}
 
-        public static void WriteMatrix4x4(this Message msg, Matrix4x4 value)
-        {
-            msg.WriteSingle(value.m00);
-            msg.WriteSingle(value.m01);
-            msg.WriteSingle(value.m02);
-            msg.WriteSingle(value.m03);
-            msg.WriteSingle(value.m10);
-            msg.WriteSingle(value.m11);
-            msg.WriteSingle(value.m12);
-            msg.WriteSingle(value.m13);
-            msg.WriteSingle(value.m20);
-            msg.WriteSingle(value.m21);
-            msg.WriteSingle(value.m22);
-            msg.WriteSingle(value.m23);
-            msg.WriteSingle(value.m30);
-            msg.WriteSingle(value.m31);
-            msg.WriteSingle(value.m32);
-            msg.WriteSingle(value.m33);
-        }
+        //public static void WriteMatrix4x4(this Message msg, Matrix4x4 value)
+        //{
+        //    msg.WriteSingle(value.m00);
+        //    msg.WriteSingle(value.m01);
+        //    msg.WriteSingle(value.m02);
+        //    msg.WriteSingle(value.m03);
+        //    msg.WriteSingle(value.m10);
+        //    msg.WriteSingle(value.m11);
+        //    msg.WriteSingle(value.m12);
+        //    msg.WriteSingle(value.m13);
+        //    msg.WriteSingle(value.m20);
+        //    msg.WriteSingle(value.m21);
+        //    msg.WriteSingle(value.m22);
+        //    msg.WriteSingle(value.m23);
+        //    msg.WriteSingle(value.m30);
+        //    msg.WriteSingle(value.m31);
+        //    msg.WriteSingle(value.m32);
+        //    msg.WriteSingle(value.m33);
+        //}
 
         public static void WriteGuid(this Message msg, Guid value)
         {
