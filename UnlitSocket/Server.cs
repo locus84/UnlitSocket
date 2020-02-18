@@ -109,7 +109,7 @@ namespace UnlitSocket
                     }
                     catch (Exception e)
                     {
-                        m_Logger.Exception(e);
+                        m_Logger?.Exception(e);
                     }
                 } 
                 else
@@ -127,13 +127,16 @@ namespace UnlitSocket
                 if (args.AcceptSocket != null)
                 {
                     //send initial message that socket is rejected
-                    args.AcceptSocket.Send(s_RejectedMessage);
+                    if(args.AcceptSocket.Connected) args.AcceptSocket.Send(s_RejectedMessage);
                     args.AcceptSocket.Close();
                     args.AcceptSocket = null;
                 }
 
-                if (IsRunning)
-                    StartAccept((Socket)sender, args);
+                var listenSocket = (Socket)sender;
+
+                //check if valid listen socket
+                if (IsRunning && listenSocket == m_ListenSocket)
+                    StartAccept(listenSocket, args);
             }
         }
 
@@ -141,8 +144,12 @@ namespace UnlitSocket
         {
             if (!IsRunning) return;
 
+            var listenSocket = m_ListenSocket;
+            m_ListenSocket = null;
+
             IsRunning = false;
-            m_ListenSocket?.Close();
+            listenSocket?.Close();
+
             foreach(var kv in m_ConnectionDic)
             {
                 //socket could be already disposed

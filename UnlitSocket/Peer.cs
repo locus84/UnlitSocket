@@ -242,7 +242,7 @@ namespace UnlitSocket
                 }
                 catch(Exception e)
                 {
-                    m_Logger.Exception(e);
+                    m_Logger?.Exception(e);
                 }
             }
             else

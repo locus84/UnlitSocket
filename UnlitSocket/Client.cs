@@ -52,7 +52,7 @@ namespace UnlitSocket
                 var buffer = new byte[1];
                 var helloAr = m_Token.Socket.BeginReceive(buffer, 0, 1, SocketFlags.None, out var socketError, null, null);
                 if (!helloAr.AsyncWaitHandle.WaitOne(5000, true)) throw new SocketException(10060);
-                if (socketError != SocketError.Success) throw new SocketException((int)socketError);
+                if (socketError != SocketError.Success && socketError != SocketError.IOPending) throw new SocketException((int)socketError);
                 m_Token.Socket.EndReceive(helloAr);
 
                 //rejected by server due to max connection
