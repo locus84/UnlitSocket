@@ -72,6 +72,11 @@ namespace UnlitSocket
             Socket = CreateSocket(true, 30000, 5000);
         }
 
+        internal void RebuildSocket()
+        {
+            Socket = CreateSocket(true, 30000, 5000);
+        }
+
         protected static Socket CreateSocket(bool keepAlive, uint interval, uint retryInterval)
         {
             //create new socket

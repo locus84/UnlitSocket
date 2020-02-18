@@ -22,20 +22,20 @@ namespace UnlitSocket
         ConcurrentQueue<UserToken> m_TokenPool;
         //Dictionary<int, UserToken> m_TokenDic;
         UserToken[] m_TokenArr;
-
+        int m_MaxConnectionThreshold = 3;
 
         public Server(int maxConnections)
         {
             m_CurrentConnectionCount = 0;
             m_MaxConnectionCount = maxConnections;
             m_TokenPool = new ConcurrentQueue<UserToken>();
-            m_TokenArr = new UserToken[maxConnections];
+            m_TokenArr = new UserToken[maxConnections + m_MaxConnectionThreshold];
         }
 
         public void Init()
         {
             //init buffer, use given value in initializer
-            for (int i = 0; i < m_MaxConnectionCount; i++)
+            for (int i = 0; i < m_MaxConnectionCount + m_MaxConnectionThreshold; i++)
             {
                 var token = new UserToken(i, this, new DefaultConnection(m_ReceivedMessages));
                 token.ReceiveArg.Completed += ProcessReceive;
@@ -46,7 +46,7 @@ namespace UnlitSocket
         public void Init<T>() where T : IConnection, new()
         {
             //init buffer, use given value in initializer
-            for (int i = 0; i < m_MaxConnectionCount; i++)
+            for (int i = 0; i < m_MaxConnectionCount + m_MaxConnectionThreshold; i++)
             {
                 var token = new UserToken(i, this, new T());
                 token.ReceiveArg.Completed += ProcessReceive;
@@ -80,19 +80,27 @@ namespace UnlitSocket
         // Begins an operation to accept a connection request from the client 
         private void StartAccept(Socket socket, SocketAsyncEventArgs args)
         {
-            if(!socket.AcceptAsync(args)) ProcessAccept(socket, args);
+            UserToken token;
+            while (!m_TokenPool.TryDequeue(out token)) Thread.Sleep(100);
+            args.UserToken = token;
+            args.AcceptSocket = token.Socket;
+            if (!socket.AcceptAsync(args)) ProcessAccept(socket, args);
         }
 
         private void ProcessAccept(object sender, SocketAsyncEventArgs args)
         {
-            if (args.SocketError == SocketError.Success && m_TokenPool.TryDequeue(out var token))
+            var token = (UserToken)args.UserToken;
+
+            if (args.SocketError == SocketError.Success && m_MaxConnectionCount >= m_CurrentConnectionCount)
             {
                 var socket = sender as Socket;
                 var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
-                m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber}");
                 //send initial message that indicates socket is accepted
+
                 token.Socket.Send(s_AcceptedMessage);
                 token.IsConnected = true;
+
+                m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber}");
 
                 try
                 {
@@ -111,14 +119,15 @@ namespace UnlitSocket
             else
             {
                 //we failed to receive new connection, let's close socket if there is
-                if (args.AcceptSocket != null)
-                {
                     //send initial message that socket is rejected
-                    if(args.AcceptSocket.Connected) args.AcceptSocket.Send(s_RejectedMessage);
-                    args.AcceptSocket.Close();
-                    args.AcceptSocket = null;
+                if(args.AcceptSocket.Connected) args.AcceptSocket.Send(s_RejectedMessage);
+                try
+                {
+                    args.AcceptSocket.Disconnect(true);
                 }
+                catch { }
 
+                m_TokenPool.Enqueue(token);
                 var listenSocket = (Socket)sender;
 
                 //check if valid listen socket
@@ -143,7 +152,7 @@ namespace UnlitSocket
                 try
                 {
                     var socket = token.Socket;
-                    if(socket != null) socket.Disconnect(false);
+                    if(socket != null) socket.Disconnect(true);
                 }
                 catch { }
             }
@@ -218,7 +227,7 @@ namespace UnlitSocket
             try
             {
                 var socket = m_TokenArr[connectionID].Socket;
-                if (socket != null) socket.Disconnect(false);
+                if (socket != null) socket.Disconnect(true);
             }
             catch { }
         }

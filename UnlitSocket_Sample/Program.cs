@@ -25,33 +25,65 @@ namespace UnlitSocket_Sample
 
         static void Main(string[] args)
         {
-            server = new Server(1000);
-            server.Init();
-            server.Start(6000);
-            server.OnDataReceived += OnData;
-            server.OnDisconnected += OnConnect;
-            server.OnDisconnected += OnDisconnect;
-            //server.SetLogger(new Logger());
+            Console.WriteLine("Server : s, Clinet : c");
+            while(true)
+            {
+                if (Console.ReadKey().KeyChar.ToString().ToLower() == "c")
+                {
+                    StartClient();
+                    break;
+                }
+                else if (Console.ReadKey().KeyChar.ToString().ToLower() == "s")
+                {
+                    StartServer();
+                    break;
+                }
+            }
 
+            while (true) Console.ReadLine();
+        }
+
+        static void StartClient()
+        {
             client = new Client();
-            //client.SetLogger(new Logger());
+            client.SetLogger(new Logger());
+            client.OnConnected += OnConnect;
+            client.OnDisconnected += OnDisconnect;
+            client.OnDataReceived += OnData;
 
             var ep = new IPEndPoint(IPAddress.Loopback, 6000);
             new Thread(new ThreadStart(Update)).Start();
-            new Thread(new ThreadStart(SendCommand)).Start();
+
+            for(int i = 0; i < 10; i++)
+            {
+                var newClient = new Client();
+                newClient.Connect(ep);
+            }
 
             while (true)
             {
                 client.Connect(ep);
-                while(client.Status == ConnectionStatus.Connecting)
+                while (client.Status == ConnectionStatus.Connecting)
                     Thread.Sleep(100);
 
                 if (client.Status == ConnectionStatus.Connected)
                     client.Disconnect();
 
-                if (client.Status == ConnectionStatus.Connected)
+                while (client.Status == ConnectionStatus.Connected)
                     Thread.Sleep(100);
             }
+        }
+
+
+        static void StartServer()
+        { 
+            server = new Server(10);
+            server.Init();
+            server.Start(6000);
+            server.OnDataReceived += OnData;
+            server.OnConnected += OnConnect;
+            server.OnDisconnected += OnDisconnect;
+            server.SetLogger(new Logger());
         }
 
         private static void Update()
@@ -59,29 +91,19 @@ namespace UnlitSocket_Sample
             while(true)
             {
                 Thread.Sleep(100);
-                server.Update();
-            }
-
-        }
-
-        private static void SendCommand()
-        {
-            while (true)
-            {
-                var message = Message.Pop();
-                message.WriteString(Console.ReadLine());
-                client.Send(message);
+                server?.Update();
+                client?.Update();
             }
         }
 
         private static void OnConnect(int connectionID)
         {
-            //Console.WriteLine($"Connection : {connectionID} - Connected");
+            Console.WriteLine($"Connection : {connectionID} - Connected");
         }
 
         private static void OnDisconnect(int connectionID)
         {
-            //Console.WriteLine($"Connection : {connectionID} - Disconnected");
+            Console.WriteLine($"Connection : {connectionID} - Disconnected");
         }
 
         private static void OnData(int connectionID, Message message, ref bool autoRecycle)

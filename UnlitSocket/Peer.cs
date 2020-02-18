@@ -192,7 +192,7 @@ namespace UnlitSocket
                         break;
                 }
             }
-            catch(Exception e) { m_Logger.Exception(e); }
+            catch(Exception e) { m_Logger?.Exception(e); }
             finally { 
                 if(recycle && receivedMessage.MessageData != null) 
                     receivedMessage.MessageData.Release(); 
@@ -211,12 +211,11 @@ namespace UnlitSocket
             // close the socket associated with the client
             try
             {
-                token.Socket.Shutdown(SocketShutdown.Send);
+                token.Socket.Disconnect(true);
             }
             // throws if client process has already closed
             catch { }
-            token.Socket.Close();
-            token.Socket = null;
+
             token.IsConnected = false;
             try
             {
