@@ -18,7 +18,7 @@ namespace UnlitSocket
         internal byte[] SizeReadBuffer = new byte[2];
         internal SocketAsyncEventArgs ReceiveArg { get; private set; }
         internal Message CurrentMessage = null;
-        internal Server OwnerServer;
+        internal Peer Peer;
 
         internal void ReadyToReceiveLength()
         {
@@ -59,31 +59,45 @@ namespace UnlitSocket
             return false;
         }
 
-        internal UserToken(int id)
+        internal UserToken(int id, Peer peer, IConnection connection)
         {
-            ConnectionID = id;
-            ReceiveArg = new SocketAsyncEventArgs();
-            ReceiveArg.BufferList = new List<ArraySegment<byte>>();
-            ReceiveArg.UserToken = this;
-        }
-
-        internal UserToken(int id, Server server)
-        {
-            OwnerServer = server;
-            ConnectionID = id;
-            ReceiveArg = new SocketAsyncEventArgs();
-            ReceiveArg.BufferList = new List<ArraySegment<byte>>();
-            ReceiveArg.UserToken = this;
-        }
-
-        internal UserToken(int id, Server server, IConnection connection)
-        {
-            OwnerServer = server;
+            Peer = peer;
             ConnectionID = id;
             Connection = connection;
+            Connection.UserToken = this;
             ReceiveArg = new SocketAsyncEventArgs();
             ReceiveArg.BufferList = new List<ArraySegment<byte>>();
             ReceiveArg.UserToken = this;
+
+            Socket = CreateSocket(true, 30000, 5000);
+        }
+
+        protected static Socket CreateSocket(bool keepAlive, uint interval, uint retryInterval)
+        {
+            //create new socket
+            var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+
+            //default settings
+            socket.SendTimeout = 5000;
+            socket.NoDelay = true;
+            socket.Blocking = false;
+            socket.SendBufferSize = 512;
+            socket.ReceiveBufferSize = 512;
+            socket.SendTimeout = 5000;
+            socket.DualMode = true;
+
+            //linger for reuse socket
+            socket.LingerState = new LingerOption(false, 0);
+
+            //keep alive setting
+            int size = System.Runtime.InteropServices.Marshal.SizeOf(new uint());
+            var inOptionValues = new byte[size * 3];
+            BitConverter.GetBytes((uint)(keepAlive ? 1 : 0)).CopyTo(inOptionValues, 0);
+            BitConverter.GetBytes(interval).CopyTo(inOptionValues, size);
+            BitConverter.GetBytes(retryInterval).CopyTo(inOptionValues, size * 2);
+            socket.IOControl(IOControlCode.KeepAliveValues, inOptionValues, null);
+
+            return socket;
         }
     }
 }

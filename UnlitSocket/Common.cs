@@ -14,19 +14,21 @@ namespace UnlitSocket
         UserToken UserToken { get; set; }
         void OnConnected();
         void OnDisconnected();
-        void OnDataReceived(Message msg, ref bool autoRelease);
+        void OnDataReceived(Message msg);
     }
 
     public static class IConnectionExtension
     {
+        public static int GetConnectionID(this IConnection connection) => connection.UserToken.ConnectionID;
+
         public static void Send(this IConnection connection, Message msg)
         {
-            connection.UserToken.OwnerServer.Send(connection.UserToken, msg);
+            connection.UserToken.Peer.Send(connection.UserToken.ConnectionID, msg);
         }
 
         public static void Disconnect(this IConnection connection)
         {
-            connection.UserToken.OwnerServer.Disconnect(connection.UserToken);
+            connection.UserToken.Peer.Disconnect(connection.UserToken.ConnectionID);
         }
     }
 

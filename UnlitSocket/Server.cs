@@ -20,15 +20,16 @@ namespace UnlitSocket
         static byte[] s_RejectedMessage = new byte[] { 0 };
 
         ConcurrentQueue<UserToken> m_TokenPool;
-        Dictionary<int, UserToken> m_ConnectionDic;
+        //Dictionary<int, UserToken> m_TokenDic;
+        UserToken[] m_TokenArr;
+
 
         public Server(int maxConnections)
         {
             m_CurrentConnectionCount = 0;
             m_MaxConnectionCount = maxConnections;
-
             m_TokenPool = new ConcurrentQueue<UserToken>();
-            m_ConnectionDic = new Dictionary<int, UserToken>(maxConnections);
+            m_TokenArr = new UserToken[maxConnections];
         }
 
         public void Init()
@@ -36,9 +37,8 @@ namespace UnlitSocket
             //init buffer, use given value in initializer
             for (int i = 0; i < m_MaxConnectionCount; i++)
             {
-                var token = new UserToken(i, this);
+                var token = new UserToken(i, this, new DefaultConnection(m_ReceivedMessages));
                 token.ReceiveArg.Completed += ProcessReceive;
-                m_ConnectionDic.Add(i, token);
                 m_TokenPool.Enqueue(token);
             }
         }
@@ -49,9 +49,7 @@ namespace UnlitSocket
             for (int i = 0; i < m_MaxConnectionCount; i++)
             {
                 var token = new UserToken(i, this, new T());
-                token.Connection.UserToken = token;
                 token.ReceiveArg.Completed += ProcessReceive;
-                m_ConnectionDic.Add(i, token);
                 m_TokenPool.Enqueue(token);
             }
         }
@@ -92,30 +90,19 @@ namespace UnlitSocket
                 var socket = sender as Socket;
                 var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
                 m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber}");
-
-                token.Socket = args.AcceptSocket;
-                token.Socket.SendTimeout = 5000;
-                token.Socket.NoDelay = true;
-                SetKeepAlive(token.Socket, true, 30000, 5000);
                 //send initial message that indicates socket is accepted
                 token.Socket.Send(s_AcceptedMessage);
                 token.IsConnected = true;
 
-                if (token.Connection != null)
+                try
                 {
-                    try
-                    {
-                        token.Connection.OnConnected();
-                    }
-                    catch (Exception e)
-                    {
-                        m_Logger?.Exception(e);
-                    }
-                } 
-                else
-                {
-                    m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Connected));
+                    token.Connection.OnConnected();
                 }
+                catch (Exception e)
+                {
+                    m_Logger?.Exception(e);
+                }
+
                 StartReceive(token);
 
                 args.AcceptSocket = null;
@@ -150,12 +137,12 @@ namespace UnlitSocket
             IsRunning = false;
             listenSocket?.Close();
 
-            foreach(var kv in m_ConnectionDic)
+            foreach(var token in m_TokenArr)
             {
                 //socket could be already disposed
                 try
                 {
-                    var socket = kv.Value.Socket;
+                    var socket = token.Socket;
                     if(socket != null) socket.Disconnect(false);
                 }
                 catch { }
@@ -171,7 +158,7 @@ namespace UnlitSocket
             {
                 //hold message not to be recycled, one send release message once.
                 message.Retain();
-                Send(recipients[i].UserToken, message);
+                Send(recipients[i].UserToken.Socket, message);
             }
 
             //now release retained by pop()
@@ -198,7 +185,7 @@ namespace UnlitSocket
         /// <summary>
         /// Send to one client
         /// </summary>
-        public void Send(int connectionID, Message message)
+        public override void Send(int connectionID, Message message)
         {
             if(message.Position == 0)
             {
@@ -206,34 +193,13 @@ namespace UnlitSocket
                 return;
             }
 
-            UserToken token;
-
-            if(!m_ConnectionDic.TryGetValue(connectionID, out token))
+            if(connectionID < 0 || connectionID >= m_TokenArr.Length)
             {
                 message.Release();
                 return;
             }
 
-            if (!token.IsConnected)
-            {
-                message.Release();
-                return;
-            }
-
-            Send(token.Socket, message);
-        }
-
-
-        /// <summary>
-        /// Send to one client
-        /// </summary>
-        public void Send(UserToken token, Message message)
-        {
-            if (message.Position == 0)
-            {
-                message.Release();
-                return;
-            }
+            var token = m_TokenArr[connectionID];
 
             if (!token.IsConnected)
             {
@@ -247,25 +213,14 @@ namespace UnlitSocket
         /// <summary>
         /// Disconnect client
         /// </summary>
-        public void Disconnect(UserToken token)
+        public override void Disconnect(int connectionID)
         {
             try
             {
-                var socket = token.Socket;
+                var socket = m_TokenArr[connectionID].Socket;
                 if (socket != null) socket.Disconnect(false);
             }
             catch { }
-        }
-
-        /// <summary>
-        /// Disconnect client
-        /// </summary>
-        public void Disconnect(int connectionID)
-        {
-            if (m_ConnectionDic.TryGetValue(connectionID, out var token))
-            {
-                Disconnect(token);
-            }
         }
 
         protected override void CloseSocket(UserToken token)

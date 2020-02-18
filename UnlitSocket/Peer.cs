@@ -8,10 +8,8 @@ using System.Net.Sockets;
 
 namespace UnlitSocket
 {
-    public class Peer
+    public abstract class Peer
     {
-        static bool s_IsMono { get; } = Type.GetType("Mono.Runtime") != null;
-
         public ConnectionStatusChangeDelegate OnConnected;
         public ConnectionStatusChangeDelegate OnDisconnected;
         public DataReceivedDelegate OnDataReceived;
@@ -42,12 +40,6 @@ namespace UnlitSocket
         /// </summary>
         protected virtual void Send(Socket socket, Message message)
         {
-            if (message.Position == 0)
-            {
-                message.Release();
-                return;
-            }
-
             SocketAsyncEventArgs sendArg;
             if (!m_SendArgsPool.TryDequeue(out sendArg))
             {
@@ -115,16 +107,8 @@ namespace UnlitSocket
                     //true means we have received all bytes for message
                     if (token.AppendReceivedBuffer(transferCount)) 
                     {
-                        if(token.Connection != null)
-                        {
-                            var recycle = true;
-                            token.Connection.OnDataReceived(token.CurrentMessage, ref recycle);
-                            if (recycle) token.CurrentMessage.Release();
-                        }
-                        else
-                        {
-                            m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Data, token.CurrentMessage));
-                        }
+                        token.Connection.OnDataReceived(token.CurrentMessage);
+                        token.CurrentMessage.Release();
 
                         //clear message
                         token.ReadyToReceiveLength();
@@ -234,34 +218,45 @@ namespace UnlitSocket
             token.Socket.Close();
             token.Socket = null;
             token.IsConnected = false;
-            if(token.Connection != null)
+            try
             {
-                try
-                {
-                    token.Connection.OnDisconnected();
-                }
-                catch(Exception e)
-                {
-                    m_Logger?.Exception(e);
-                }
+                token.Connection.OnDisconnected();
             }
-            else
+            catch(Exception e)
             {
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(token.ConnectionID, MessageType.Disconnected));
+                m_Logger?.Exception(e);
             }
         }
 
-        protected static void SetKeepAlive(Socket socket, bool on, uint interval, uint retryInterval)
+        protected class DefaultConnection : IConnection
         {
-            int size = System.Runtime.InteropServices.Marshal.SizeOf(new uint());
+            ThreadSafeQueue<ReceivedMessage> m_MessageQueue;
+            public UserToken UserToken { get; set; }
 
-            var inOptionValues = new byte[size * 3];
-            BitConverter.GetBytes((uint)(on ? 1 : 0)).CopyTo(inOptionValues, 0);
-            BitConverter.GetBytes(interval).CopyTo(inOptionValues, size);
-            BitConverter.GetBytes(retryInterval).CopyTo(inOptionValues, size * 2);
+            public DefaultConnection(ThreadSafeQueue<ReceivedMessage> messageQueue)
+            {
+                m_MessageQueue = messageQueue;
+            }
 
-            socket.IOControl(IOControlCode.KeepAliveValues, inOptionValues, null);
+            public void OnConnected()
+            {
+                m_MessageQueue.Enqueue(new ReceivedMessage(UserToken.ConnectionID, MessageType.Connected));
+            }
+
+            public void OnDataReceived(Message msg)
+            {
+                m_MessageQueue.Enqueue(new ReceivedMessage(UserToken.ConnectionID, MessageType.Data, msg));
+                msg.Retain(); //to prevent release
+            }
+
+            public void OnDisconnected()
+            {
+                m_MessageQueue.Enqueue(new ReceivedMessage(UserToken.ConnectionID, MessageType.Disconnected));
+            }
         }
+
+        public abstract void Send(int connectionID, Message msg);
+        public abstract void Disconnect(int connectionID);
     }
 }
 

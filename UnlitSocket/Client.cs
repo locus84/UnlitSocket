@@ -13,12 +13,11 @@ namespace UnlitSocket
 
         UserToken m_Token;
 
-        public Client() : this(0) { }
-
-        internal Client(int clientID)
+        public Client(IConnection connectionObject = null)
         {
-            m_Token = new UserToken(clientID);
+            m_Token = new UserToken(0, this, connectionObject ?? new DefaultConnection(m_ReceivedMessages));
             m_Token.ReceiveArg.Completed += ProcessReceive;
+            m_Token.Connection.UserToken = m_Token;
         }
 
         public void Connect(IPEndPoint remoteEndPoint)
@@ -61,7 +60,16 @@ namespace UnlitSocket
                 //now it's connected
                 Status = ConnectionStatus.Connected;
                 m_Logger?.Debug($"Connection {ClientID} has been connected to server");
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(ClientID, MessageType.Connected));
+
+                try
+                {
+                    m_Token.Connection.OnConnected();
+                }
+                catch(Exception e)
+                {
+                    m_Logger.Exception(e);
+                }
+
                 StartReceive(m_Token);
             }
             catch (Exception e)
@@ -82,7 +90,7 @@ namespace UnlitSocket
                 return;
             }
 
-            if (Status != ConnectionStatus.Connected)
+            if (!m_Token.IsConnected)
             {
                 message.Release();
                 return;
@@ -105,6 +113,16 @@ namespace UnlitSocket
         {
             Status = ConnectionStatus.Disconnected;
             base.CloseSocket(token);
+        }
+
+        public override void Send(int connectionID, Message msg)
+        {
+            if(m_Token.ConnectionID == connectionID) Send(msg);
+        }
+
+        public override void Disconnect(int connectionID)
+        {
+            if (m_Token.ConnectionID == connectionID) Disconnect();
         }
     }
 }

@@ -31,29 +31,42 @@ namespace UnlitSocket_Sample
             server.OnDataReceived += OnData;
             server.OnDisconnected += OnConnect;
             server.OnDisconnected += OnDisconnect;
-            server.SetLogger(new Logger());
+            //server.SetLogger(new Logger());
 
             client = new Client();
-            client.SetLogger(new Logger());
-            client.Connect(new IPEndPoint(IPAddress.Loopback, 6000));
+            //client.SetLogger(new Logger());
 
-            var thread = new Thread(new ThreadStart(Update));
-            thread.Start();
+            var ep = new IPEndPoint(IPAddress.Loopback, 6000);
+            new Thread(new ThreadStart(Update)).Start();
+            new Thread(new ThreadStart(SendCommand)).Start();
 
             while (true)
             {
-                Thread.Sleep(100);
-                client.Update();
-                server.Update();
-                if (client.Status == ConnectionStatus.Disconnected) break;
-            }
+                client.Connect(ep);
+                while(client.Status == ConnectionStatus.Connecting)
+                    Thread.Sleep(100);
 
-            server.Stop();
+                if (client.Status == ConnectionStatus.Connected)
+                    client.Disconnect();
+
+                if (client.Status == ConnectionStatus.Connected)
+                    Thread.Sleep(100);
+            }
         }
 
         private static void Update()
         {
             while(true)
+            {
+                Thread.Sleep(100);
+                server.Update();
+            }
+
+        }
+
+        private static void SendCommand()
+        {
+            while (true)
             {
                 var message = Message.Pop();
                 message.WriteString(Console.ReadLine());
@@ -63,12 +76,12 @@ namespace UnlitSocket_Sample
 
         private static void OnConnect(int connectionID)
         {
-            Console.WriteLine($"Connection : {connectionID} - Connected");
+            //Console.WriteLine($"Connection : {connectionID} - Connected");
         }
 
         private static void OnDisconnect(int connectionID)
         {
-            Console.WriteLine($"Connection : {connectionID} - Disconnected");
+            //Console.WriteLine($"Connection : {connectionID} - Disconnected");
         }
 
         private static void OnData(int connectionID, Message message, ref bool autoRecycle)
