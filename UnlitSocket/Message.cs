@@ -11,6 +11,7 @@ namespace UnlitSocket
     public class Message
     {
         const int MAX_BYTE_ARRAY_SIZE = 256;
+        const int WARM_UP_MESSAGE_COUNT = 256;
 
         static ConcurrentQueue<byte[]> s_ByteArrayPool = new ConcurrentQueue<byte[]>();
         static ConcurrentQueue<Message> s_MessagePool = new ConcurrentQueue<Message>();
@@ -222,7 +223,6 @@ namespace UnlitSocket
                 args.BufferList[0] = new ArraySegment<byte>(prevSegment.Array, remainder, countLeft);
             }
 
-            //refresh bufferlist
             args.BufferList = args.BufferList;
         }
     }

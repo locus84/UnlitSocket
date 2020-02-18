@@ -31,7 +31,7 @@ namespace UnlitSocket
 
             Status = ConnectionStatus.Connecting;
             RemoteEndPoint = remoteEndPoint;
-            System.Threading.Tasks.Task.Run(ConnectInternal);
+            System.Threading.Tasks.Task.Run(() => ConnectInternal());
         }
 
         private void ConnectInternal()
