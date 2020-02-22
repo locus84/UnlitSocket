@@ -13,7 +13,7 @@ namespace UnlitSocket
         Socket m_ListenSocket;
         int m_CurrentConnectionCount;
         public bool IsRunning { get; private set; } = false;
-        public int Port { get; private set; }
+        public int Port { get; private set; } = 6000;
 
         //initial hellomessage Buffer
         static byte[] s_AcceptedMessage = new byte[] { 1 };
@@ -32,32 +32,21 @@ namespace UnlitSocket
             m_TokenArr = new UserToken[maxConnections + m_MaxConnectionThreshold];
         }
 
-        public void Init()
-        {
-            //init buffer, use given value in initializer
-            for (int i = 0; i < m_MaxConnectionCount + m_MaxConnectionThreshold; i++)
-            {
-                var token = new UserToken(i, this, new DefaultConnection(m_ReceivedMessages));
-                token.ReceiveArg.Completed += ProcessReceive;
-                m_TokenPool.Enqueue(token);
-            }
-        }
-
-        public void Init<T>() where T : IConnection, new()
-        {
-            //init buffer, use given value in initializer
-            for (int i = 0; i < m_MaxConnectionCount + m_MaxConnectionThreshold; i++)
-            {
-                var token = new UserToken(i, this, new T());
-                token.ReceiveArg.Completed += ProcessReceive;
-                m_TokenPool.Enqueue(token);
-            }
-        }
-
         // Starts the server such that it is listening for 
         // incoming connection requests.    
-        public void Start(int port)
+        public void Start(int port, Func<IConnection> connectionFactory = null)
         {
+            //init buffer, use given value in initializer
+            if (connectionFactory == null) connectionFactory = () => new DefaultConnection(m_ReceivedMessages);
+
+            //setup tokens
+            for (int i = 0; i < m_MaxConnectionCount + m_MaxConnectionThreshold; i++)
+            {
+                var token = new UserToken(i, this, connectionFactory());
+                token.ReceiveArg.Completed += ProcessReceive;
+                m_TokenPool.Enqueue(token);
+            }
+
             Port = port;
             // create the socket which listens for incoming connections
             m_ListenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
@@ -161,9 +150,15 @@ namespace UnlitSocket
         /// <summary>
         /// Send to multiple recipients without creating multiple Message object
         /// </summary>
-        public void Send(IList<IConnection> recipients, Message message)
+        public bool Send(IList<IConnection> recipients, Message message)
         {
-            for(int i = 0; i < recipients.Count; i++)
+            if (message.Position == 0)
+            {
+                message.Release();
+                return false;
+            }
+
+            for (int i = 0; i < recipients.Count; i++)
             {
                 //hold message not to be recycled, one send release message once.
                 message.Retain();
@@ -172,40 +167,51 @@ namespace UnlitSocket
 
             //now release retained by pop()
             message.Release();
+            return true;
         }
 
 
         /// <summary>
         /// Send to multiple recipients without creating multiple Message object
         /// </summary>
-        public void Send(IList<int> recipients, Message message)
+        public bool Send(IList<int> recipients, Message message)
         {
+            if (message.Position == 0)
+            {
+                message.Release();
+                return false;
+            }
+
             for (int i = 0; i < recipients.Count; i++)
             {
+                if (recipients[i] >= 0 && recipients[i] < m_TokenArr.Length)
+                {
+                    message.Retain();
+                    Send(recipients[i], message);
+                }
                 //hold message not to be recycled, one send release message once.
-                message.Retain();
-                Send(recipients[i], message);
             }
 
             //now release retained by pop()
             message.Release();
+            return true;
         }
 
         /// <summary>
         /// Send to one client
         /// </summary>
-        public override void Send(int connectionID, Message message)
+        public override bool Send(int connectionID, Message message)
         {
             if(message.Position == 0)
             {
                 message.Release();
-                return;
+                return false;
             }
 
             if(connectionID < 0 || connectionID >= m_TokenArr.Length)
             {
                 message.Release();
-                return;
+                return false;
             }
 
             var token = m_TokenArr[connectionID];
@@ -213,10 +219,11 @@ namespace UnlitSocket
             if (!token.IsConnected)
             {
                 message.Release();
-                return;
+                return false;
             }
 
             Send(token.Socket, message);
+            return true;
         }
 
         /// <summary>

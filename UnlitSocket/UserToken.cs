@@ -69,22 +69,22 @@ namespace UnlitSocket
             ReceiveArg.BufferList = new List<ArraySegment<byte>>();
             ReceiveArg.UserToken = this;
 
-            Socket = CreateSocket(true, 30000, 5000);
+            Socket = CreateSocket(Peer.NoDelay, true, 30000, 5000);
         }
 
         internal void RebuildSocket()
         {
-            Socket = CreateSocket(true, 30000, 5000);
+            Socket = CreateSocket(Peer.NoDelay, true, 30000, 5000);
         }
 
-        protected static Socket CreateSocket(bool keepAlive, uint interval, uint retryInterval)
+        protected static Socket CreateSocket(bool noDelay, bool keepAlive, uint interval, uint retryInterval)
         {
             //create new socket
             var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
 
             //default settings
             socket.SendTimeout = 5000;
-            socket.NoDelay = true;
+            socket.NoDelay = noDelay;
             socket.Blocking = false;
             socket.SendBufferSize = 512;
             socket.ReceiveBufferSize = 512;

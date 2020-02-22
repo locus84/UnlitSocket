@@ -13,6 +13,8 @@ namespace UnlitSocket
         public ConnectionStatusChangeDelegate OnConnected;
         public ConnectionStatusChangeDelegate OnDisconnected;
         public DataReceivedDelegate OnDataReceived;
+        public bool NoDelay { get; set; } = true;
+
 
         protected ConcurrentQueue<SocketAsyncEventArgs> m_SendArgsPool = new ConcurrentQueue<SocketAsyncEventArgs>();
         protected ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();
@@ -71,6 +73,14 @@ namespace UnlitSocket
             ((Message)e.UserToken).Release();
             e.UserToken = null;
             m_SendArgsPool.Enqueue(e);
+            if(e.SocketError != SocketError.Success)
+            {
+                try {
+                    var socket = sender as Socket;
+                    if (socket.Connected) socket.Disconnect(true);
+                }
+                catch { }
+            }
         }
 
         protected void StartReceive(UserToken token)
@@ -254,7 +264,7 @@ namespace UnlitSocket
             }
         }
 
-        public abstract void Send(int connectionID, Message msg);
+        public abstract bool Send(int connectionID, Message msg);
         public abstract void Disconnect(int connectionID);
     }
 }

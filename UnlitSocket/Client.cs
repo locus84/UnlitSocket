@@ -111,9 +111,18 @@ namespace UnlitSocket
             base.CloseSocket(token);
         }
 
-        public override void Send(int connectionID, Message msg)
+        public override bool Send(int connectionID, Message msg)
         {
-            if(m_Token.ConnectionID == connectionID) Send(msg);
+            if(m_Token.ConnectionID == connectionID)
+            {
+                Send(msg);
+                return true;
+            }
+            else
+            {
+                msg.Release();
+                return false;
+            }
         }
 
         public override void Disconnect(int connectionID)

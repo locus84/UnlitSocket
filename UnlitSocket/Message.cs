@@ -11,7 +11,6 @@ namespace UnlitSocket
     public class Message
     {
         const int MAX_BYTE_ARRAY_SIZE = 256;
-        const int WARM_UP_MESSAGE_COUNT = 256;
 
         static ConcurrentQueue<byte[]> s_ByteArrayPool = new ConcurrentQueue<byte[]>();
         static ConcurrentQueue<Message> s_MessagePool = new ConcurrentQueue<Message>();
@@ -99,6 +98,11 @@ namespace UnlitSocket
             }
         }
 
+        public void ReadSegment(ArraySegment<byte> segment)
+        {
+            ReadBytes(segment.Array, segment.Offset, segment.Count);
+        }
+
         public void WriteByte(byte value)
         {
             EnsureSize(1);
@@ -133,6 +137,11 @@ namespace UnlitSocket
                 bytesLeft -= writeCount;
                 Position += writeCount;
             }
+        }
+
+        public void WriteSegment(ArraySegment<byte> segment)
+        {
+            WriteBytes(segment.Array, segment.Offset, segment.Count);
         }
 
         public void Clear()

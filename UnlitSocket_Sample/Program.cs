@@ -12,9 +12,14 @@ namespace UnlitSocket_Sample
 
         public class Logger : ILogReceiver
         {
-            public void Debug(string str)
+            public void Debug(string msg)
             {
-                Console.WriteLine(str);
+                Console.WriteLine(msg);
+            }
+
+            public void Warning(string msg)
+            {
+                Console.WriteLine(msg);
             }
 
             public void Exception(Exception exception)
@@ -78,7 +83,6 @@ namespace UnlitSocket_Sample
         static void StartServer()
         { 
             server = new Server(10);
-            server.Init();
             server.Start(6000);
             server.OnDataReceived += OnData;
             server.OnConnected += OnConnect;

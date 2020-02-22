@@ -21,9 +21,9 @@ namespace UnlitSocket
     {
         public static int GetConnectionID(this IConnection connection) => connection.UserToken.ConnectionID;
 
-        public static void Send(this IConnection connection, Message msg)
+        public static bool Send(this IConnection connection, Message msg)
         {
-            connection.UserToken.Peer.Send(connection.UserToken.ConnectionID, msg);
+            return connection.UserToken.Peer.Send(connection.UserToken.ConnectionID, msg);
         }
 
         public static void Disconnect(this IConnection connection)
@@ -34,7 +34,8 @@ namespace UnlitSocket
 
     public interface ILogReceiver
     {
-        void Debug(string str);
+        void Debug(string msg);
+        void Warning(string msg);
         void Exception(Exception exception);
     }
 
