@@ -73,14 +73,6 @@ namespace UnlitSocket
             ((Message)e.UserToken).Release();
             e.UserToken = null;
             m_SendArgsPool.Enqueue(e);
-            if(e.SocketError != SocketError.Success)
-            {
-                try {
-                    var socket = sender as Socket;
-                    if (socket.Connected) socket.Disconnect(true);
-                }
-                catch { }
-            }
         }
 
         protected void StartReceive(UserToken token)
