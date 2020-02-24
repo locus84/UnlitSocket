@@ -14,7 +14,7 @@ namespace UnlitSocket
         public ConnectionStatusChangeDelegate OnDisconnected;
         public DataReceivedDelegate OnDataReceived;
         public bool NoDelay { get; set; } = true;
-
+        public bool KeepAlive { get; set; } = true;
 
         protected ConcurrentQueue<SocketAsyncEventArgs> m_SendArgsPool = new ConcurrentQueue<SocketAsyncEventArgs>();
         protected ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();

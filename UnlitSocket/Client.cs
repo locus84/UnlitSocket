@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
@@ -21,7 +22,7 @@ namespace UnlitSocket
             m_Token.Connection.UserToken = m_Token;
         }
 
-        public void Connect(IPEndPoint remoteEndPoint)
+        public void Connect(IPEndPoint remoteEndPoint, float timeOutSec = 5f)
         {
             if (Status != ConnectionStatus.Disconnected)
             {
@@ -31,23 +32,28 @@ namespace UnlitSocket
 
             Status = ConnectionStatus.Connecting;
             RemoteEndPoint = remoteEndPoint;
-            System.Threading.Tasks.Task.Run(() => ConnectInternal());
+            System.Threading.Tasks.Task.Run(() => ConnectInternal(timeOutSec));
         }
 
-        private void ConnectInternal()
+        private void ConnectInternal(float timeOut)
         {
             try
             {
                 if (m_Token.Socket.IsBound) m_Token.RebuildSocket();
                 var connectAr = m_Token.Socket.BeginConnect(RemoteEndPoint, null, null);
 
+                var stopWatch = new Stopwatch();
+                var timeOutLeft = (int)(timeOut * 1000);
+                stopWatch.Start();
+
                 //wait for connecting
-                if (!connectAr.AsyncWaitHandle.WaitOne(5000, true)) throw new SocketException(10060);
+                if (!connectAr.AsyncWaitHandle.WaitOne(timeOutLeft, true)) throw new SocketException(10060);
                 m_Token.Socket.EndConnect(connectAr);
+
 
                 //wait for initial message
                 var helloAr = m_Token.Socket.BeginReceive(m_ConnectBuffer, 0, 1, SocketFlags.None, out var socketError, null, null);
-                if (!helloAr.AsyncWaitHandle.WaitOne(5000, true)) throw new SocketException(10060);
+                if (!helloAr.AsyncWaitHandle.WaitOne(timeOutLeft - (int)stopWatch.ElapsedMilliseconds, true)) throw new SocketException(10060);
                 if (socketError != SocketError.Success && socketError != SocketError.IOPending) throw new SocketException((int)socketError);
                 m_Token.Socket.EndReceive(helloAr);
 

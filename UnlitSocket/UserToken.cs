@@ -69,12 +69,12 @@ namespace UnlitSocket
             ReceiveArg.BufferList = new List<ArraySegment<byte>>();
             ReceiveArg.UserToken = this;
 
-            Socket = CreateSocket(Peer.NoDelay, true, 30000, 5000);
+            Socket = CreateSocket(Peer.NoDelay, Peer.KeepAlive, 30000, 5000);
         }
 
         internal void RebuildSocket()
         {
-            Socket = CreateSocket(Peer.NoDelay, true, 30000, 5000);
+            Socket = CreateSocket(Peer.NoDelay, Peer.KeepAlive, 30000, 5000);
         }
 
         protected static Socket CreateSocket(bool noDelay, bool keepAlive, uint interval, uint retryInterval)
@@ -83,24 +83,24 @@ namespace UnlitSocket
             var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
 
             //default settings
-            socket.SendTimeout = 5000;
             socket.NoDelay = noDelay;
-            socket.Blocking = false;
             socket.SendBufferSize = 512;
             socket.ReceiveBufferSize = 512;
-            socket.SendTimeout = 5000;
             socket.DualMode = true;
 
             //linger for reuse socket
             socket.LingerState = new LingerOption(false, 0);
 
             //keep alive setting
-            int size = System.Runtime.InteropServices.Marshal.SizeOf(new uint());
-            var inOptionValues = new byte[size * 3];
-            BitConverter.GetBytes((uint)(keepAlive ? 1 : 0)).CopyTo(inOptionValues, 0);
-            BitConverter.GetBytes(interval).CopyTo(inOptionValues, size);
-            BitConverter.GetBytes(retryInterval).CopyTo(inOptionValues, size * 2);
-            socket.IOControl(IOControlCode.KeepAliveValues, inOptionValues, null);
+            if(keepAlive)
+            {
+                int size = System.Runtime.InteropServices.Marshal.SizeOf(new uint());
+                var inOptionValues = new byte[size * 3];
+                BitConverter.GetBytes((uint)(keepAlive ? 1 : 0)).CopyTo(inOptionValues, 0);
+                BitConverter.GetBytes(interval).CopyTo(inOptionValues, size);
+                BitConverter.GetBytes(retryInterval).CopyTo(inOptionValues, size * 2);
+                socket.IOControl(IOControlCode.KeepAliveValues, inOptionValues, null);
+            }
 
             return socket;
         }
