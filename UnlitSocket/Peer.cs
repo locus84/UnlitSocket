@@ -184,6 +184,7 @@ namespace UnlitSocket
             }
         }
 
+        //default message handler, add received messages to message queue by created new ReceivedMessage
         private class DefaultMessageHandler : IMessageHandler
         {
             ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages;
