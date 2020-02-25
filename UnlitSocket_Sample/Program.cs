@@ -33,13 +33,17 @@ namespace UnlitSocket_Sample
             Console.WriteLine("Server : s, Clinet : c");
             while(true)
             {
-                if (Console.ReadKey().KeyChar.ToString().ToLower() == "c")
+                var key = Console.ReadKey();
+
+                if (key.KeyChar.ToString().ToLower() == "c")
                 {
+                    Console.WriteLine();
                     StartClient();
                     break;
                 }
-                else if (Console.ReadKey().KeyChar.ToString().ToLower() == "s")
+                else if (key.KeyChar.ToString().ToLower() == "s")
                 {
+                    Console.WriteLine();
                     StartServer();
                     break;
                 }
@@ -50,14 +54,12 @@ namespace UnlitSocket_Sample
 
         static void StartClient()
         {
+            Console.WriteLine("StartClient");
+            new Thread(new ThreadStart(Update)).Start();
             client = new Client();
             client.SetLogger(new Logger());
-            client.OnConnected += OnConnect;
-            client.OnDisconnected += OnDisconnect;
-            client.OnDataReceived += OnData;
 
             var ep = new IPEndPoint(IPAddress.Loopback, 6000);
-            new Thread(new ThreadStart(Update)).Start();
 
             for(int i = 0; i < 10; i++)
             {
@@ -81,12 +83,11 @@ namespace UnlitSocket_Sample
 
 
         static void StartServer()
-        { 
+        {
+            Console.WriteLine("StartServer");
+            new Thread(new ThreadStart(Update)).Start();
             server = new Server(10);
             server.Start(6000);
-            server.OnDataReceived += OnData;
-            server.OnConnected += OnConnect;
-            server.OnDisconnected += OnDisconnect;
             server.SetLogger(new Logger());
         }
 
@@ -95,29 +96,32 @@ namespace UnlitSocket_Sample
             while(true)
             {
                 Thread.Sleep(100);
-                server?.Update();
-                client?.Update();
+                if (server != null) Update(server);
+                if (client != null) Update(client);
             }
         }
 
-        private static void OnConnect(int connectionID)
+        private static void Update(Peer peer)
         {
-            Console.WriteLine($"Connection : {connectionID} - Connected");
-        }
-
-        private static void OnDisconnect(int connectionID)
-        {
-            Console.WriteLine($"Connection : {connectionID} - Disconnected");
-        }
-
-        private static void OnData(int connectionID, Message message, ref bool autoRecycle)
-        {
-            var receivedMsg = message.ReadString();
-            if(receivedMsg == "exit")
+            ReceivedMessage message;
+            while(peer.GetNextMessage(out message))
             {
-                server.Disconnect(connectionID);
+                switch(message.Type)
+                {
+                    case MessageType.Connected:
+                        Console.WriteLine($"Connection : {message.ConnectionId} - Connected");
+                        break;
+                    case MessageType.Disconnected:
+                        Console.WriteLine($"Connection : {message.ConnectionId} - Disconnected");
+                        break;
+                    case MessageType.Data:
+                        Console.WriteLine($"Connection : {message.ConnectionId} - Data");
+                        var receivedMsg = message.MessageData.ReadString();
+                        if (receivedMsg == "exit" && peer is Server serverPeer) serverPeer.Disconnect(message.ConnectionId);
+                        message.MessageData.Release();
+                        break;
+                }
             }
-            Console.WriteLine($"Connection : {connectionID} - Msg : {receivedMsg}");
         }
     }
 }

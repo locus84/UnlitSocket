@@ -15,6 +15,8 @@ namespace UnlitSocket
         public bool IsRunning { get; private set; } = false;
         public int Port { get; private set; } = 6000;
 
+        private bool IsValidConnectionID(int id) => id > 0 && id <= m_TokenArr.Length;
+
         //initial hellomessage Buffer
         static byte[] s_AcceptedMessage = new byte[] { 1 };
         static byte[] s_RejectedMessage = new byte[] { 0 };
@@ -34,15 +36,13 @@ namespace UnlitSocket
 
         // Starts the server such that it is listening for 
         // incoming connection requests.    
-        public void Start(int port, Func<IConnection> connectionFactory = null)
+        public void Start(int port)
         {
-            //init buffer, use given value in initializer
-            if (connectionFactory == null) connectionFactory = () => new DefaultConnection(m_ReceivedMessages);
-
             //setup tokens
             for (int i = 0; i < m_MaxConnectionCount + m_MaxConnectionThreshold; i++)
             {
-                var token = new UserToken(i, this, connectionFactory());
+                //0 connection id is reserved for mirror's local connection
+                var token = new UserToken(i + 1, this);
                 token.ReceiveArg.Completed += ProcessReceive;
                 m_TokenPool.Enqueue(token);
             }
@@ -93,7 +93,7 @@ namespace UnlitSocket
 
                 try
                 {
-                    token.Connection.OnConnected();
+                    m_MessageHandler.OnConnected(token.ConnectionID);
                 }
                 catch (Exception e)
                 {
@@ -150,46 +150,12 @@ namespace UnlitSocket
         /// <summary>
         /// Send to multiple recipients without creating multiple Message object
         /// </summary>
-        public bool Send(IList<IConnection> recipients, Message message)
-        {
-            if (message.Position == 0)
-            {
-                message.Release();
-                return false;
-            }
-
-            for (int i = 0; i < recipients.Count; i++)
-            {
-                //hold message not to be recycled, one send release message once.
-                message.Retain();
-                Send(recipients[i].UserToken.Socket, message);
-            }
-
-            //now release retained by pop()
-            message.Release();
-            return true;
-        }
-
-
-        /// <summary>
-        /// Send to multiple recipients without creating multiple Message object
-        /// </summary>
         public bool Send(IList<int> recipients, Message message)
         {
-            if (message.Position == 0)
-            {
-                message.Release();
-                return false;
-            }
-
             for (int i = 0; i < recipients.Count; i++)
             {
-                if (recipients[i] >= 0 && recipients[i] < m_TokenArr.Length)
-                {
-                    message.Retain();
-                    Send(recipients[i], message);
-                }
-                //hold message not to be recycled, one send release message once.
+                message.Retain();
+                Send(recipients[i], message); 
             }
 
             //now release retained by pop()
@@ -200,7 +166,7 @@ namespace UnlitSocket
         /// <summary>
         /// Send to one client
         /// </summary>
-        public override bool Send(int connectionID, Message message)
+        public bool Send(int connectionID, Message message)
         {
             if(message.Position == 0)
             {
@@ -208,13 +174,13 @@ namespace UnlitSocket
                 return false;
             }
 
-            if(connectionID < 0 || connectionID >= m_TokenArr.Length)
+            if(!IsValidConnectionID(connectionID))
             {
                 message.Release();
                 return false;
             }
 
-            var token = m_TokenArr[connectionID];
+            var token = m_TokenArr[connectionID - 1];
 
             if (!token.IsConnected)
             {
@@ -229,11 +195,12 @@ namespace UnlitSocket
         /// <summary>
         /// Disconnect client
         /// </summary>
-        public override void Disconnect(int connectionID)
+        public void Disconnect(int connectionID)
         {
             try
             {
-                var socket = m_TokenArr[connectionID].Socket;
+                //no id check, will be done by exception
+                var socket = m_TokenArr[connectionID - 1].Socket;
                 if (socket != null) socket.Disconnect(true);
             }
             catch { }

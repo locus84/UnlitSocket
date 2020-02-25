@@ -43,14 +43,19 @@ namespace UnlitSocket
 
         public void CheckSize(int count)
         {
-            if (Position + count > Capacity)
+            if (Position + count > Capacity || Position + count > ushort.MaxValue)
             {
-                throw new EndOfStreamException("ReadByte out of range:" + ToString());
+                throw new EndOfStreamException("CheckSize out of range:" + ToString());
             }
         }
 
         public void EnsureSize(int amount)
         {
+            if (Position + amount > ushort.MaxValue)
+            {
+                throw new EndOfStreamException("EnsureSize out of range:" + ToString());
+            }
+
             while (Position + amount >= MAX_BYTE_ARRAY_SIZE * m_InnerDatas.Count)
             {
                 byte[] newByteArray;
@@ -165,14 +170,9 @@ namespace UnlitSocket
         {
             if (Interlocked.Decrement(ref m_RefCount) == 0)
             {
-                Push(this);
+                Clear();
+                s_MessagePool.Enqueue(this);
             }
-        }
-
-        public static void Push(Message msg)
-        {
-            msg.Clear();
-            s_MessagePool.Enqueue(msg);
         }
 
         public static Message Pop()
@@ -186,7 +186,7 @@ namespace UnlitSocket
             return result;
         }
 
-        public void BindToArgsReceive(SocketAsyncEventArgs args, int count)
+        internal void BindToArgsReceive(SocketAsyncEventArgs args, int count)
         {
             EnsureSize(count);
             args.BufferList.Clear();
@@ -201,7 +201,7 @@ namespace UnlitSocket
             args.BufferList = args.BufferList;
         }
 
-        public void BindToArgsSend(SocketAsyncEventArgs args)
+        internal void BindToArgsSend(SocketAsyncEventArgs args)
         {
             args.BufferList.Clear();
 
@@ -219,7 +219,7 @@ namespace UnlitSocket
             args.BufferList = args.BufferList;
         }
 
-        public static void AdvanceRecevedOffset(SocketAsyncEventArgs args, int initialBufferCount, int readCount)
+        internal static void AdvanceRecevedOffset(SocketAsyncEventArgs args, int initialBufferCount, int readCount)
         {
             var quotient = Math.DivRem(readCount, MAX_BYTE_ARRAY_SIZE, out var remainder);
             while (args.BufferList.Count > initialBufferCount - quotient)

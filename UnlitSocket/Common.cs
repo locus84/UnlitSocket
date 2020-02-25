@@ -4,32 +4,16 @@ using System.Runtime.InteropServices;
 namespace UnlitSocket
 {
     public delegate void ConnectionStatusChangeDelegate(int connectionID);
-    public delegate void DataReceivedDelegate(int connectionID, Message message, ref bool autoRecycle);
+    public delegate void DataReceivedDelegate(int connectionID, Message message);
 
     public enum ConnectionStatus { Disconnected, Connecting, Connected }
     public enum MessageType { Connected, Disconnected, Data }
 
-    public interface IConnection
+    public interface IMessageHandler
     {
-        UserToken UserToken { get; set; }
-        void OnConnected();
-        void OnDisconnected();
-        void OnDataReceived(Message msg);
-    }
-
-    public static class IConnectionExtension
-    {
-        public static int GetConnectionID(this IConnection connection) => connection.UserToken.ConnectionID;
-
-        public static bool Send(this IConnection connection, Message msg)
-        {
-            return connection.UserToken.Peer.Send(connection.UserToken.ConnectionID, msg);
-        }
-
-        public static void Disconnect(this IConnection connection)
-        {
-            connection.UserToken.Peer.Disconnect(connection.UserToken.ConnectionID);
-        }
+        void OnConnected(int connectionId);
+        void OnDisconnected(int connectionId);
+        void OnDataReceived(int connectionId, Message msg);
     }
 
     public interface ILogReceiver
@@ -37,6 +21,19 @@ namespace UnlitSocket
         void Debug(string msg);
         void Warning(string msg);
         void Exception(Exception exception);
+    }
+
+    public struct ReceivedMessage
+    {
+        public int ConnectionId;
+        public MessageType Type;
+        public Message MessageData;
+        public ReceivedMessage(int connectionId, MessageType type, Message message = null)
+        {
+            ConnectionId = connectionId;
+            Type = type;
+            MessageData = message;
+        }
     }
 
     [StructLayout(LayoutKind.Explicit)]

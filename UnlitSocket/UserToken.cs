@@ -6,7 +6,6 @@ namespace UnlitSocket
 {
     public class UserToken
     {
-        internal IConnection Connection;
         public bool IsConnected { get; internal set; } = false;
         int m_ReadTotal = 0;
         int m_SizeTotal = 0;
@@ -59,12 +58,10 @@ namespace UnlitSocket
             return false;
         }
 
-        internal UserToken(int id, Peer peer, IConnection connection)
+        internal UserToken(int id, Peer peer)
         {
             Peer = peer;
             ConnectionID = id;
-            Connection = connection;
-            Connection.UserToken = this;
             ReceiveArg = new SocketAsyncEventArgs();
             ReceiveArg.BufferList = new List<ArraySegment<byte>>();
             ReceiveArg.UserToken = this;

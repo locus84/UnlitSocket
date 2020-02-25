@@ -1,7 +1,4 @@
-﻿#if UNITY_5_3_OR_NEWER
-#define UNITY_RECEIVE
-#endif
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
@@ -10,32 +7,26 @@ namespace UnlitSocket
 {
     public abstract class Peer
     {
-        public ConnectionStatusChangeDelegate OnConnected;
-        public ConnectionStatusChangeDelegate OnDisconnected;
-        public DataReceivedDelegate OnDataReceived;
         public bool NoDelay { get; set; } = true;
         public bool KeepAlive { get; set; } = true;
 
         protected ConcurrentQueue<SocketAsyncEventArgs> m_SendArgsPool = new ConcurrentQueue<SocketAsyncEventArgs>();
         protected ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();
+
         protected ILogReceiver m_Logger;
-
-        private List<ReceivedMessage> m_ReceiveMesageCache = new List<ReceivedMessage>(10);
-
-        protected struct ReceivedMessage
-        {
-            public int ConnectionID;
-            public MessageType Type;
-            public Message MessageData;
-            public ReceivedMessage(int connectionID, MessageType type, Message message = null)
-            {
-                ConnectionID = connectionID;
-                Type = type;
-                MessageData = message;
-            }
-        }
+        protected IMessageHandler m_MessageHandler;
 
         public void SetLogger(ILogReceiver logger) => m_Logger = logger;
+        public void SetHandler(IMessageHandler handler)
+        {
+            if (handler == null) throw new ArgumentNullException();
+            m_MessageHandler = handler;
+        }
+
+        public Peer()
+        {
+            m_MessageHandler = new DefaultMessageHandler(m_ReceivedMessages);
+        }
 
         /// <summary>
         /// message must be retained before calling this function
@@ -58,12 +49,19 @@ namespace UnlitSocket
                 bool isPending = socket.SendAsync(sendArg);
                 if (!isPending) ProcessSend(socket, sendArg);
             }
-            catch
+            catch(Exception e)
             {
                 //send failed, let's release message
                 message.Release();
                 sendArg.UserToken = null;
                 m_SendArgsPool.Enqueue(sendArg);
+                m_Logger.Exception(e);
+                // close the socket associated with the client
+                try
+                {
+                    if (socket.Connected) socket.Disconnect(true);
+                }
+                catch { }
             }
         }
 
@@ -73,6 +71,19 @@ namespace UnlitSocket
             ((Message)e.UserToken).Release();
             e.UserToken = null;
             m_SendArgsPool.Enqueue(e);
+            if(e.SocketError != SocketError.Success)
+            {
+                var socket = sender as Socket;
+                m_Logger.Warning("Socket Error : " + e.SocketError);
+
+                // close the socket associated with the client
+                try
+                {
+                    if (socket.Connected) socket.Disconnect(true);
+                }
+                // throws if client process has already closed
+                catch { }
+            }
         }
 
         protected void StartReceive(UserToken token)
@@ -80,11 +91,7 @@ namespace UnlitSocket
             token.ReadyToReceiveLength();
             try
             {
-#if UNITY_RECEIVE
-                bool isPending = token.Socket.ReceiveAsyncWithMono(token.ReceiveArg);
-#else
                 bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
-#endif
                 if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
             }
             catch
@@ -97,11 +104,7 @@ namespace UnlitSocket
         {
             var token = e.UserToken as UserToken;
 
-#if UNITY_RECEIVE
-            var transferCount = token.LastTransferCount;
-#else
             var transferCount = e.BytesTransferred;
-#endif
             if (transferCount > 0 && e.SocketError == SocketError.Success)
             {
                 if (token.CurrentMessage != null)
@@ -109,9 +112,7 @@ namespace UnlitSocket
                     //true means we have received all bytes for message
                     if (token.AppendReceivedBuffer(transferCount)) 
                     {
-                        token.Connection.OnDataReceived(token.CurrentMessage);
-                        token.CurrentMessage.Release();
-
+                        m_MessageHandler.OnDataReceived(token.ConnectionID, token.CurrentMessage);
                         //clear message
                         token.ReadyToReceiveLength();
                         token.CurrentMessage = null;
@@ -130,11 +131,7 @@ namespace UnlitSocket
 
                 try
                 {
-#if UNITY_RECEIVE
-                    bool isPending = token.Socket.ReceiveAsyncWithMono(token.ReceiveArg);
-#else
                     bool isPending = token.Socket.ReceiveAsync(token.ReceiveArg);
-#endif
                     if (!isPending) ProcessReceive(token.Socket, token.ReceiveArg);
                 }
                 catch
@@ -148,57 +145,15 @@ namespace UnlitSocket
             }
         }
 
-
-        /// <summary>
-        /// this should be called in only one thread, much faster
-        /// </summary>
-        public virtual void Update()
+        public bool GetNextMessage(out ReceivedMessage message)
         {
-            m_ReceivedMessages.DequeueAll(m_ReceiveMesageCache);
-            for(int i = 0; i < m_ReceiveMesageCache.Count; i++)
-            {
-                InvokeMessageCallbacks(m_ReceiveMesageCache[i]);
-            }
-            m_ReceiveMesageCache.Clear();
+            return m_ReceivedMessages.TryDequeue(out message);
         }
 
-        /// <summary>
-        /// this can be called in multiple thread
-        /// </summary>
-        public virtual void UpdateThreadSafe()
+        public void GetNextMessages(List<ReceivedMessage> messageCache)
         {
-            ReceivedMessage receivedMessage;
-            while (m_ReceivedMessages.TryDequeue(out receivedMessage))
-            {
-                InvokeMessageCallbacks(receivedMessage);
-            }
-        }
-
-        protected void InvokeMessageCallbacks(ReceivedMessage receivedMessage)
-        {
-            bool recycle = true;
-            try
-            {
-                switch (receivedMessage.Type)
-                {
-                    case MessageType.Connected:
-                        OnConnected?.Invoke(receivedMessage.ConnectionID);
-                        break;
-                    case MessageType.Disconnected:
-                        OnDisconnected?.Invoke(receivedMessage.ConnectionID);
-                        break;
-                    case MessageType.Data:
-                        {
-                            OnDataReceived?.Invoke(receivedMessage.ConnectionID, receivedMessage.MessageData, ref recycle);
-                        }
-                        break;
-                }
-            }
-            catch(Exception e) { m_Logger?.Exception(e); }
-            finally { 
-                if(recycle && receivedMessage.MessageData != null) 
-                    receivedMessage.MessageData.Release(); 
-            }
+            messageCache.Clear();
+            m_ReceivedMessages.DequeueAll(messageCache);
         }
 
         protected virtual void CloseSocket(UserToken token)
@@ -221,7 +176,7 @@ namespace UnlitSocket
             token.IsConnected = false;
             try
             {
-                token.Connection.OnDisconnected();
+                m_MessageHandler.OnDisconnected(token.ConnectionID);
             }
             catch(Exception e)
             {
@@ -229,35 +184,17 @@ namespace UnlitSocket
             }
         }
 
-        protected class DefaultConnection : IConnection
+        private class DefaultMessageHandler : IMessageHandler
         {
-            ThreadSafeQueue<ReceivedMessage> m_MessageQueue;
-            public UserToken UserToken { get; set; }
-
-            public DefaultConnection(ThreadSafeQueue<ReceivedMessage> messageQueue)
-            {
-                m_MessageQueue = messageQueue;
-            }
-
-            public void OnConnected()
-            {
-                m_MessageQueue.Enqueue(new ReceivedMessage(UserToken.ConnectionID, MessageType.Connected));
-            }
-
-            public void OnDataReceived(Message msg)
-            {
-                m_MessageQueue.Enqueue(new ReceivedMessage(UserToken.ConnectionID, MessageType.Data, msg));
-                msg.Retain(); //to prevent release
-            }
-
-            public void OnDisconnected()
-            {
-                m_MessageQueue.Enqueue(new ReceivedMessage(UserToken.ConnectionID, MessageType.Disconnected));
-            }
+            ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages;
+            public DefaultMessageHandler(ThreadSafeQueue<ReceivedMessage> messageQueue) => m_ReceivedMessages = messageQueue;
+            public void OnConnected(int connectionId) =>
+                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Connected));
+            public void OnDataReceived(int connectionId, Message msg) =>
+                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Data, msg));
+            public void OnDisconnected(int connectionId) =>
+                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Disconnected));
         }
-
-        public abstract bool Send(int connectionID, Message msg);
-        public abstract void Disconnect(int connectionID);
     }
 }
 

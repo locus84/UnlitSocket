@@ -15,11 +15,10 @@ namespace UnlitSocket
         byte[] m_ConnectBuffer = new byte[1];
         UserToken m_Token;
 
-        public Client(IConnection connectionObject = null)
+        public Client()
         {
-            m_Token = new UserToken(0, this, connectionObject ?? new DefaultConnection(m_ReceivedMessages));
+            m_Token = new UserToken(0, this);
             m_Token.ReceiveArg.Completed += ProcessReceive;
-            m_Token.Connection.UserToken = m_Token;
         }
 
         public void Connect(IPEndPoint remoteEndPoint, float timeOutSec = 5f)
@@ -50,7 +49,6 @@ namespace UnlitSocket
                 if (!connectAr.AsyncWaitHandle.WaitOne(timeOutLeft, true)) throw new SocketException(10060);
                 m_Token.Socket.EndConnect(connectAr);
 
-
                 //wait for initial message
                 var helloAr = m_Token.Socket.BeginReceive(m_ConnectBuffer, 0, 1, SocketFlags.None, out var socketError, null, null);
                 if (!helloAr.AsyncWaitHandle.WaitOne(timeOutLeft - (int)stopWatch.ElapsedMilliseconds, true)) throw new SocketException(10060);
@@ -66,7 +64,7 @@ namespace UnlitSocket
 
                 try
                 {
-                    m_Token.Connection.OnConnected();
+                    m_MessageHandler.OnConnected(ClientID);
                 }
                 catch(Exception e)
                 {
@@ -115,25 +113,6 @@ namespace UnlitSocket
         {
             Status = ConnectionStatus.Disconnected;
             base.CloseSocket(token);
-        }
-
-        public override bool Send(int connectionID, Message msg)
-        {
-            if(m_Token.ConnectionID == connectionID)
-            {
-                Send(msg);
-                return true;
-            }
-            else
-            {
-                msg.Release();
-                return false;
-            }
-        }
-
-        public override void Disconnect(int connectionID)
-        {
-            if (m_Token.ConnectionID == connectionID) Disconnect();
         }
     }
 }
