@@ -50,5 +50,19 @@ namespace UnlitSocket.Tests
 
             Assert.IsTrue(client.Status == ConnectionStatus.Disconnected);
         }
+
+        [Test]
+        public void GUIDConversionTest()
+        {
+            for(int i = 0; i < 5; i++)
+            {
+                var msg = Message.Pop();
+                var guid = System.Guid.NewGuid();
+                msg.WriteGuid(guid);
+                msg.Position = 0;
+                System.Console.WriteLine(guid);
+                Assert.IsTrue(guid == msg.ReadGuid());
+            }
+        }
     }
 }

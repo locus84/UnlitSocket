@@ -72,11 +72,17 @@ namespace UnlitSocket
     [StructLayout(LayoutKind.Explicit)]
     internal struct UIntGuid
     {
-        [FieldOffset(0)]
-        public ulong longValue1;
-
-        [FieldOffset(8)]
-        public ulong longValue2;
+        [FieldOffset(0)] public uint A;
+        [FieldOffset(4)] public ushort B;
+        [FieldOffset(6)] public ushort C;
+        [FieldOffset(8)] public byte D;
+        [FieldOffset(9)] public byte E;
+        [FieldOffset(10)] public byte F;
+        [FieldOffset(11)] public byte G;
+        [FieldOffset(12)] public byte H;
+        [FieldOffset(13)] public byte I;
+        [FieldOffset(14)] public byte J;
+        [FieldOffset(15)] public byte K;
 
         [FieldOffset(0)]
         public Guid guidValue;

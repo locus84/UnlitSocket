@@ -49,19 +49,13 @@ namespace UnlitSocket
         public static void WriteInt32(this Message msg, int value) => msg.WriteUInt32((uint)value);
         public static void WriteInt64(this Message msg, long value) => msg.WriteUInt64((ulong)value);
         public static void WriteSingle(this Message msg, float value) {
-            UIntFloat converter = new UIntFloat
-            {
-                floatValue = value
-            };
+            UIntFloat converter = new UIntFloat { floatValue = value };
             msg.WriteUInt32(converter.intValue);
         }
 
         public static void WriteDouble(this Message msg, double value)
         {
-            UIntDouble converter = new UIntDouble
-            {
-                doubleValue = value
-            };
+            UIntDouble converter = new UIntDouble { doubleValue = value };
             msg.WriteUInt64(converter.longValue);
         }
 
@@ -70,10 +64,7 @@ namespace UnlitSocket
             // the only way to read it without allocations is to both read and
             // write it with the FloatConverter (which is not binary compatible
             // to writer.Write(decimal), hence why we use it here too)
-            UIntDecimal converter = new UIntDecimal
-            {
-                decimalValue = value
-            };
+            UIntDecimal converter = new UIntDecimal { decimalValue = value };
             msg.WriteUInt64(converter.longValue1);
             msg.WriteUInt64(converter.longValue2);
         }
@@ -321,12 +312,19 @@ namespace UnlitSocket
 
         public static void WriteGuid(this Message msg, Guid value)
         {
-            UIntGuid converter = new UIntGuid
-            {
-                guidValue = value
-            };
-            msg.WriteUInt64(converter.longValue1);
-            msg.WriteUInt64(converter.longValue2);
+            msg.EnsureSize(16);
+            UIntGuid converter = new UIntGuid{ guidValue = value };
+            msg.WriteUInt32(converter.A);
+            msg.WriteUInt16(converter.B);
+            msg.WriteUInt16(converter.C);
+            msg.WriteByteNoCheck(converter.D);
+            msg.WriteByteNoCheck(converter.E);
+            msg.WriteByteNoCheck(converter.F);
+            msg.WriteByteNoCheck(converter.G);
+            msg.WriteByteNoCheck(converter.H);
+            msg.WriteByteNoCheck(converter.I);
+            msg.WriteByteNoCheck(converter.J);
+            msg.WriteByteNoCheck(converter.K);
         }
     }
 }

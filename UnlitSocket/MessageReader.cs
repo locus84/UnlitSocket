@@ -215,9 +215,19 @@ namespace UnlitSocket
 
         public static Guid ReadGuid(this Message msg)
         {
+            msg.CheckSize(16);
             UIntGuid converter = new UIntGuid();
-            converter.longValue1 = msg.ReadUInt64();
-            converter.longValue2 = msg.ReadUInt64();
+            converter.A = msg.ReadUInt32();
+            converter.B = msg.ReadUInt16();
+            converter.C = msg.ReadUInt16();
+            converter.D = msg.ReadByteNoCheck();
+            converter.E = msg.ReadByteNoCheck();
+            converter.F = msg.ReadByteNoCheck();
+            converter.G = msg.ReadByteNoCheck();
+            converter.H = msg.ReadByteNoCheck();
+            converter.I = msg.ReadByteNoCheck();
+            converter.J = msg.ReadByteNoCheck();
+            converter.K = msg.ReadByteNoCheck();
             return converter.guidValue;
         } 
     }
