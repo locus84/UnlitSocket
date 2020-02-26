@@ -59,6 +59,7 @@ namespace UnlitSocket
 
                 //now it's connected
                 Status = ConnectionStatus.Connected;
+                m_Token.IsConnected = true;
                 m_Logger?.Debug($"Connection {ClientID} has been connected to server");
 
                 try
