@@ -191,15 +191,37 @@ namespace UnlitSocket
         /// <summary>
         /// Disconnect client
         /// </summary>
-        public void Disconnect(int connectionID)
+        public bool Disconnect(int connectionID)
         {
             try
             {
                 //no id check, will be done by exception
                 var socket = m_TokenList[connectionID - 1].Socket;
-                if (socket.Connected) socket.Disconnect(true);
+                if (socket.Connected)
+                {
+                    socket.Disconnect(true);
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
             }
-            catch { }
+            catch {
+                return false;
+            }
+        }
+
+        public IPEndPoint GetConnectionAddress(int connectionId)
+        {
+            //1 is reserved, so let it -1 index of tokenlist
+            if (connectionId <= 0 || connectionId > m_TokenList.Count)
+            {
+                return null;
+            }
+
+            var token = m_TokenList[connectionId - 1];
+            return token.IsConnected ? (IPEndPoint)token.Socket.RemoteEndPoint : null;
         }
 
         protected override void CloseSocket(UserToken token, bool withCallback)

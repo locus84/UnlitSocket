@@ -24,6 +24,7 @@ namespace UnlitSocket
 
         public void Connect(string host, int port, float timeOutSec = 5f)
         {
+            if (host == "localhost") host = "127.0.0.1";
             Connect(new IPEndPoint(IPAddress.Parse(host), port), timeOutSec);
         }
 
@@ -44,7 +45,7 @@ namespace UnlitSocket
 
             DisconnectedEvent.Reset();
 
-            var connectThread = new System.Threading.Thread(() => ConnectInternal(timeOutSec, asyncResult));
+            var connectThread = new Thread(() => ConnectInternal(timeOutSec, asyncResult));
             connectThread.Start();
         }
 
@@ -81,21 +82,22 @@ namespace UnlitSocket
         /// <summary>
         /// Send to the server
         /// </summary>
-        public void Send(Message message)
+        public bool Send(Message message)
         {
             if (message.Position == 0)
             {
                 message.Release();
-                return;
+                return false;
             }
 
             if (!m_Token.IsConnected)
             {
                 message.Release();
-                return;
+                return false;
             }
 
             Send(m_Token.Socket, message);
+            return true;
         }
 
         public void Disconnect()

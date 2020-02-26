@@ -23,6 +23,7 @@ namespace UnlitSocket
         private byte[] m_SendSize = new byte[2];
         private List<byte[]> m_InnerDatas = new List<byte[]>();
         public int Position = 0;
+        public int Size { get; internal set; }
         private int m_RefCount = 0;
 
         public static void WarmUpMessage(int count)
@@ -112,11 +113,13 @@ namespace UnlitSocket
         {
             EnsureSize(1);
             ByteAtIndex(Position++) = value;
+            Size = Position;
         }
 
         public void WriteByteNoCheck(byte value)
         {
             ByteAtIndex(Position++) = value;
+            Size = Position;
         }
 
         public void WriteBytes(byte[] bytes, int offset, int count)
@@ -142,6 +145,8 @@ namespace UnlitSocket
                 bytesLeft -= writeCount;
                 Position += writeCount;
             }
+
+            Size = Position;
         }
 
         public void WriteSegment(ArraySegment<byte> segment)

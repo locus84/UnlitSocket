@@ -54,7 +54,11 @@ namespace UnlitSocket
         {
             m_ReadTotal += receiveCount;
             //received properly
-            if (m_ReadTotal == m_SizeTotal) return true;
+            if (m_ReadTotal == m_SizeTotal)
+            {
+                CurrentMessage.Size = m_SizeTotal;
+                return true;
+            }
             Message.AdvanceRecevedOffset(ReceiveArg, m_InitialBufferCount, m_ReadTotal);
             return false;
         }
