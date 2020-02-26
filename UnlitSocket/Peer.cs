@@ -96,7 +96,7 @@ namespace UnlitSocket
             }
             catch
             {
-                CloseSocket(token);
+                CloseSocket(token, true);
             }
         }
 
@@ -136,12 +136,12 @@ namespace UnlitSocket
                 }
                 catch
                 {
-                    CloseSocket(token);
+                    CloseSocket(token, true);
                 }
             }
             else
             {
-                CloseSocket(token);
+                CloseSocket(token, true);
             }
         }
 
@@ -156,7 +156,7 @@ namespace UnlitSocket
             m_ReceivedMessages.DequeueAll(messageCache);
         }
 
-        protected virtual void CloseSocket(UserToken token)
+        protected virtual void CloseSocket(UserToken token, bool withCallback)
         {
             //were we receiving message? if ture, clear message
             if (token.CurrentMessage != null)
@@ -173,14 +173,20 @@ namespace UnlitSocket
             // throws if client process has already closed
             catch { }
 
+            //connected false can be called anywhere, but disconnect event should be called once
             token.IsConnected = false;
-            try
+            token.DisconnectedEvent.Set();
+
+            if(withCallback)
             {
-                m_MessageHandler.OnDisconnected(token.ConnectionID);
-            }
-            catch(Exception e)
-            {
-                m_Logger?.Exception(e);
+                try
+                {
+                    m_MessageHandler.OnDisconnected(token.ConnectionID);
+                }
+                catch (Exception e)
+                {
+                    m_Logger?.Exception(e);
+                }
             }
         }
 

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Threading;
 
 namespace UnlitSocket
 {
@@ -18,6 +19,7 @@ namespace UnlitSocket
         internal SocketAsyncEventArgs ReceiveArg { get; private set; }
         internal Message CurrentMessage = null;
         internal Peer Peer;
+        internal ManualResetEvent DisconnectedEvent = new ManualResetEvent(true);
 
         internal void ReadyToReceiveLength()
         {

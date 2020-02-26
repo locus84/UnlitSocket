@@ -80,7 +80,7 @@ namespace UnlitSocket
         {
             var token = (UserToken)args.UserToken;
 
-            if (args.SocketError == SocketError.Success && m_MaxConnectionCount >= m_CurrentConnectionCount)
+            if (args.SocketError == SocketError.Success && m_MaxConnectionCount > m_CurrentConnectionCount)
             {
                 var socket = sender as Socket;
                 var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
@@ -100,6 +100,7 @@ namespace UnlitSocket
                     m_Logger?.Exception(e);
                 }
 
+                token.DisconnectedEvent.Reset();
                 StartReceive(token);
 
                 args.AcceptSocket = null;
@@ -206,9 +207,9 @@ namespace UnlitSocket
             catch { }
         }
 
-        protected override void CloseSocket(UserToken token)
+        protected override void CloseSocket(UserToken token, bool withCallback)
         {
-            base.CloseSocket(token);
+            base.CloseSocket(token, withCallback);
             var currentNumber = Interlocked.Decrement(ref m_CurrentConnectionCount);
             m_Logger?.Debug($"client { token.ConnectionID } has been disconnected from the server. There are {currentNumber} clients connected to the server");
             // decrement the counter keeping track of the total number of clients connected to the server

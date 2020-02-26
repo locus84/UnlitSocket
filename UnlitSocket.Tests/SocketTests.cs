@@ -12,6 +12,7 @@ namespace UnlitSocket.Tests
         public void Setup()
         {
             server = new Server(1000);
+            server.SetLogger(new TestLogger());
             server.Start(Port);
         }
 
@@ -35,6 +36,20 @@ namespace UnlitSocket.Tests
             server.Start(Port + 1);
             System.Threading.Thread.Sleep(100);
             server.Stop();
+        }
+
+        [Test]
+        public void DisconnectImmediateTest()
+        {
+            Client client = new Client();
+            client.SetLogger(new TestLogger());
+            client.Connect( "127.0.0.1", Port);
+
+            // I should be able to disconnect right away
+            // if connection was pending,  it should just cancel
+            client.Disconnect();
+
+            Assert.IsTrue(client.Status == ConnectionStatus.Disconnected);
         }
     }
 }

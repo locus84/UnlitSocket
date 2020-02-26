@@ -21,6 +21,11 @@ namespace UnlitSocket
             m_Token.ReceiveArg.Completed += ProcessReceive;
         }
 
+        public void Connect(string host, int port, float timeOutSec = 5f)
+        {
+            Connect(new IPEndPoint(IPAddress.Parse(host), port), timeOutSec);
+        }
+
         public void Connect(IPEndPoint remoteEndPoint, float timeOutSec = 5f)
         {
             if (Status != ConnectionStatus.Disconnected)
@@ -31,16 +36,19 @@ namespace UnlitSocket
 
             Status = ConnectionStatus.Connecting;
             RemoteEndPoint = remoteEndPoint;
-            System.Threading.Tasks.Task.Run(() => ConnectInternal(timeOutSec));
+
+            //call async function but to support synchronized call, we create socket and connect here
+            if (m_Token.Socket.IsBound) m_Token.RebuildSocket();
+            var asyncResult = m_Token.Socket.BeginConnect(RemoteEndPoint, null, null);
+
+            m_Token.DisconnectedEvent.Reset();
+            System.Threading.Tasks.Task.Run(() => ConnectInternal(timeOutSec, asyncResult));
         }
 
-        private void ConnectInternal(float timeOut)
+        private void ConnectInternal(float timeOut, IAsyncResult connectAr)
         {
             try
             {
-                if (m_Token.Socket.IsBound) m_Token.RebuildSocket();
-                var connectAr = m_Token.Socket.BeginConnect(RemoteEndPoint, null, null);
-
                 var stopWatch = new Stopwatch();
                 var timeOutLeft = (int)(timeOut * 1000);
                 stopWatch.Start();
@@ -75,7 +83,7 @@ namespace UnlitSocket
             }
             catch (Exception e)
             {
-                CloseSocket(m_Token);
+                CloseSocket(m_Token, false);
                 m_Logger?.Exception(e);
             }
         }
@@ -105,14 +113,18 @@ namespace UnlitSocket
             try
             {
                 m_Token.Socket.Disconnect(true);
+                
             }
             catch { }
+
+            //wait for disconnected event will synchronize receive thread.
+            m_Token.DisconnectedEvent.WaitOne();
         }
 
-        protected override void CloseSocket(UserToken token)
+        protected override void CloseSocket(UserToken token, bool withCallback)
         {
             Status = ConnectionStatus.Disconnected;
-            base.CloseSocket(token);
+            base.CloseSocket(token, withCallback);
         }
     }
 }

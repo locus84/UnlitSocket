@@ -47,6 +47,13 @@ namespace UnlitSocket_Sample
                     StartServer();
                     break;
                 }
+                else if (key.KeyChar.ToString().ToLower() == "b")
+                {
+                    Console.WriteLine();
+                    StartServer();
+                    StartClient();
+                    break;
+                }
             }
 
             while (true) Console.ReadLine();
@@ -57,7 +64,7 @@ namespace UnlitSocket_Sample
             Console.WriteLine("StartClient");
             new Thread(new ThreadStart(Update)).Start();
             client = new Client();
-            client.SetLogger(new Logger());
+            //client.SetLogger(new Logger());
 
             var ep = new IPEndPoint(IPAddress.Loopback, 6000);
 
@@ -70,13 +77,7 @@ namespace UnlitSocket_Sample
             while (true)
             {
                 client.Connect(ep);
-                while (client.Status == ConnectionStatus.Connecting)
-                    Thread.Sleep(100);
-
-                if (client.Status == ConnectionStatus.Connected)
-                    client.Disconnect();
-
-                while (client.Status == ConnectionStatus.Connected)
+                while (client.Status != ConnectionStatus.Disconnected)
                     Thread.Sleep(100);
             }
         }
