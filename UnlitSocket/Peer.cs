@@ -175,7 +175,6 @@ namespace UnlitSocket
 
             //connected false can be called anywhere, but disconnect event should be called once
             token.IsConnected = false;
-            token.DisconnectedEvent.Set();
 
             if(withCallback)
             {

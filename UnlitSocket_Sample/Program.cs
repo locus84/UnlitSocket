@@ -8,7 +8,8 @@ namespace UnlitSocket_Sample
     class Program
     {
         static Server server;
-        static Client client;
+
+        static IPEndPoint ep = new IPEndPoint(IPAddress.Loopback, 6000);
 
         public class Logger : ILogReceiver
         {
@@ -31,65 +32,56 @@ namespace UnlitSocket_Sample
         static void Main(string[] args)
         {
             Console.WriteLine("Server : s, Clinet : c");
-            while(true)
+            var thread = new Thread(new ThreadStart(Update));
+            thread.Start();
+
+            while (true)
             {
-                var key = Console.ReadKey();
-
-                if (key.KeyChar.ToString().ToLower() == "c")
+                var command = Console.ReadLine();
+                if (command == "start server")
                 {
-                    Console.WriteLine();
-                    StartClient();
-                    break;
-                }
-                else if (key.KeyChar.ToString().ToLower() == "s")
-                {
-                    Console.WriteLine();
+                    if(server != null && server.IsRunning)
+                        server.Stop();
                     StartServer();
-                    break;
                 }
-                else if (key.KeyChar.ToString().ToLower() == "b")
-                {
-                    Console.WriteLine();
-                    StartServer();
-                    StartClient();
-                    break;
-                }
+                if (command == "stop server")
+                    server?.Stop();
+                if (command == "more client")
+                    AddMoreClient();
             }
-
-            while (true) Console.ReadLine();
         }
 
-        static void StartClient()
+        static void AddMoreClient()
         {
-            Console.WriteLine("StartClient");
-            new Thread(new ThreadStart(Update)).Start();
-            client = new Client();
-            //client.SetLogger(new Logger());
-
-            var ep = new IPEndPoint(IPAddress.Loopback, 6000);
-
-            for(int i = 0; i < 10; i++)
+            for (int i = 0; i < 100; i++)
             {
                 var newClient = new Client();
                 newClient.Connect(ep);
             }
-
-            while (true)
-            {
-                client.Connect(ep);
-                while (client.Status != ConnectionStatus.Disconnected)
-                    Thread.Sleep(100);
-            }
         }
+
+        //static void StartClient()
+        //{
+        //    Console.WriteLine("StartClient");
+        //    client = new Client();
+        //    client.Connect(ep);
+
+        //    while (true)
+        //    {
+        //        client.Connect(ep);
+        //        while (client.Status == ConnectionStatus.Connecting)
+        //            Thread.Sleep(100);
+        //        client.Disconnect();
+        //    }
+        //}
 
 
         static void StartServer()
         {
             Console.WriteLine("StartServer");
-            new Thread(new ThreadStart(Update)).Start();
-            server = new Server(10);
-            server.Start(6000);
-            server.SetLogger(new Logger());
+            server = new Server();
+            server.Start(ep.Port);
+            //server.SetLogger(new Logger());
         }
 
         private static void Update()
@@ -98,7 +90,7 @@ namespace UnlitSocket_Sample
             {
                 Thread.Sleep(100);
                 if (server != null) Update(server);
-                if (client != null) Update(client);
+                //if (client != null) Update(client);
             }
         }
 

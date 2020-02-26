@@ -11,7 +11,7 @@ namespace UnlitSocket.Tests
         [SetUp]
         public void Setup()
         {
-            server = new Server(1000);
+            server = new Server();
             server.SetLogger(new TestLogger());
             server.Start(Port);
         }
@@ -32,9 +32,8 @@ namespace UnlitSocket.Tests
         [Test]
         public void ServerStartAndStop()
         {
-            var server = new Server(20000);
+            var server = new Server();
             server.Start(Port + 1);
-            System.Threading.Thread.Sleep(100);
             server.Stop();
         }
 

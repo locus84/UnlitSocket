@@ -9,43 +9,28 @@ namespace UnlitSocket
 {
     public class Server : Peer
     {
-        private int m_MaxConnectionCount; //maximum connection
         Socket m_ListenSocket;
         int m_CurrentConnectionCount;
         public bool IsRunning { get; private set; } = false;
         public int Port { get; private set; } = 6000;
 
-        private bool IsValidConnectionID(int id) => id > 0 && id <= m_TokenArr.Length;
+        //this list is only increasing
+        List<UserToken> m_TokenList;
+        ConcurrentQueue<int> m_FreeConnectionIds = new ConcurrentQueue<int>();
+        ManualResetEvent m_RunningResetEvent = new ManualResetEvent(true);
 
-        //initial hellomessage Buffer
-        static byte[] s_AcceptedMessage = new byte[] { 1 };
-        static byte[] s_RejectedMessage = new byte[] { 0 };
-
-        ConcurrentQueue<UserToken> m_TokenPool;
-        //Dictionary<int, UserToken> m_TokenDic;
-        UserToken[] m_TokenArr;
-        int m_MaxConnectionThreshold = 3;
-
-        public Server(int maxConnections)
+        public Server()
         {
             m_CurrentConnectionCount = 0;
-            m_MaxConnectionCount = maxConnections;
-            m_TokenPool = new ConcurrentQueue<UserToken>();
-            m_TokenArr = new UserToken[maxConnections + m_MaxConnectionThreshold];
+            m_FreeConnectionIds = new ConcurrentQueue<int>();
+            m_TokenList = new List<UserToken>(16);
         }
 
         // Starts the server such that it is listening for 
         // incoming connection requests.    
         public void Start(int port)
         {
-            //setup tokens
-            for (int i = 0; i < m_MaxConnectionCount + m_MaxConnectionThreshold; i++)
-            {
-                //0 connection id is reserved for mirror's local connection
-                var token = new UserToken(i + 1, this);
-                token.ReceiveArg.Completed += ProcessReceive;
-                m_TokenPool.Enqueue(token);
-            }
+            if (IsRunning) throw new Exception("Server is already running");
 
             Port = port;
             // create the socket which listens for incoming connections
@@ -62,15 +47,27 @@ namespace UnlitSocket
             var acceptEventArg = new SocketAsyncEventArgs();
             acceptEventArg.Completed += ProcessAccept;
 
-            StartAccept(m_ListenSocket, acceptEventArg);
+            m_RunningResetEvent.Reset();
             IsRunning = true;
+            StartAccept(m_ListenSocket, acceptEventArg);
         }
 
         // Begins an operation to accept a connection request from the client 
         private void StartAccept(Socket socket, SocketAsyncEventArgs args)
         {
-            UserToken token;
-            while (!m_TokenPool.TryDequeue(out token)) Thread.Sleep(100);
+            UserToken token = null;
+
+            if(m_FreeConnectionIds.TryDequeue(out var connID))
+            {
+                token = m_TokenList[connID - 1];
+            }
+            else
+            {
+                token = new UserToken(m_TokenList.Count + 1, this);
+                token.ReceiveArg.Completed += ProcessReceive;
+                m_TokenList.Add(token);
+            }
+
             args.UserToken = token;
             args.AcceptSocket = token.Socket;
             if (!socket.AcceptAsync(args)) ProcessAccept(socket, args);
@@ -80,13 +77,11 @@ namespace UnlitSocket
         {
             var token = (UserToken)args.UserToken;
 
-            if (args.SocketError == SocketError.Success && m_MaxConnectionCount > m_CurrentConnectionCount)
+            if (args.SocketError == SocketError.Success)
             {
                 var socket = sender as Socket;
                 var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
                 //send initial message that indicates socket is accepted
-
-                token.Socket.Send(s_AcceptedMessage);
                 token.IsConnected = true;
 
                 m_Logger?.Debug($"Client {token.ConnectionID} connected, Current Count : {currentNumber}");
@@ -100,7 +95,6 @@ namespace UnlitSocket
                     m_Logger?.Exception(e);
                 }
 
-                token.DisconnectedEvent.Reset();
                 StartReceive(token);
 
                 args.AcceptSocket = null;
@@ -108,35 +102,35 @@ namespace UnlitSocket
             }
             else
             {
-                //we failed to receive new connection, let's close socket if there is
-                    //send initial message that socket is rejected
-                if(args.AcceptSocket.Connected) args.AcceptSocket.Send(s_RejectedMessage);
                 try
                 {
-                    args.AcceptSocket.Disconnect(true);
+                    if (args.AcceptSocket.Connected)
+                        args.AcceptSocket.Disconnect(true);
                 }
                 catch { }
 
-                m_TokenPool.Enqueue(token);
+                m_FreeConnectionIds.Enqueue(token.ConnectionID);
                 var listenSocket = (Socket)sender;
 
                 //check if valid listen socket
-                if (IsRunning && listenSocket == m_ListenSocket)
+                if (IsRunning)
                     StartAccept(listenSocket, args);
+                else
+                    m_RunningResetEvent.Set();
             }
         }
 
         public void Stop()
         {
-            if (!IsRunning) return;
-
-            var listenSocket = m_ListenSocket;
-            m_ListenSocket = null;
+            if (!IsRunning) throw new Exception("Server is not running");
 
             IsRunning = false;
-            listenSocket?.Close();
+            m_ListenSocket.Close();
+            m_ListenSocket = null;
+            m_RunningResetEvent.WaitOne();
 
-            foreach(var token in m_TokenArr)
+            //now usertokens are fixed count
+            foreach(var token in m_TokenList)
             {
                 //socket could be already disposed
                 try
@@ -175,13 +169,14 @@ namespace UnlitSocket
                 return false;
             }
 
-            if(!IsValidConnectionID(connectionID))
+            //1 is reserved, so let it -1 index of tokenlist
+            if(connectionID <= 0 || connectionID > m_TokenList.Count)
             {
                 message.Release();
                 return false;
             }
 
-            var token = m_TokenArr[connectionID - 1];
+            var token = m_TokenList[connectionID - 1];
 
             if (!token.IsConnected)
             {
@@ -201,8 +196,8 @@ namespace UnlitSocket
             try
             {
                 //no id check, will be done by exception
-                var socket = m_TokenArr[connectionID - 1].Socket;
-                if (socket != null) socket.Disconnect(true);
+                var socket = m_TokenList[connectionID - 1].Socket;
+                if (socket.Connected) socket.Disconnect(true);
             }
             catch { }
         }
@@ -211,9 +206,10 @@ namespace UnlitSocket
         {
             base.CloseSocket(token, withCallback);
             var currentNumber = Interlocked.Decrement(ref m_CurrentConnectionCount);
-            m_Logger?.Debug($"client { token.ConnectionID } has been disconnected from the server. There are {currentNumber} clients connected to the server");
+
+            m_Logger?.Debug($"Client {token.ConnectionID} Disconnected, Current Count : {currentNumber}");
             // decrement the counter keeping track of the total number of clients connected to the server
-            m_TokenPool.Enqueue(token);
+            m_FreeConnectionIds.Enqueue(token.ConnectionID);
         }
     }
 }
