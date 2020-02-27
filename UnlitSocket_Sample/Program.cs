@@ -44,6 +44,8 @@ namespace UnlitSocket_Sample
                         server.Stop();
                     StartServer();
                 }
+                if (command == "reconnect client")
+                    new Thread(new ThreadStart(StartClient)).Start();
                 if (command == "stop server")
                     server?.Stop();
                 if (command == "more client")
@@ -60,20 +62,19 @@ namespace UnlitSocket_Sample
             }
         }
 
-        //static void StartClient()
-        //{
-        //    Console.WriteLine("StartClient");
-        //    client = new Client();
-        //    client.Connect(ep);
+        static void StartClient()
+        {
+            Console.WriteLine("StartClient");
+            var client = new Client();
 
-        //    while (true)
-        //    {
-        //        client.Connect(ep);
-        //        while (client.Status == ConnectionStatus.Connecting)
-        //            Thread.Sleep(100);
-        //        client.Disconnect();
-        //    }
-        //}
+            while (true)
+            {
+                client.Connect(ep);
+                while (client.Status == ConnectionStatus.Connecting)
+                    Thread.Sleep(100);
+                client.Disconnect();
+            }
+        }
 
 
         static void StartServer()

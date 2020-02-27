@@ -229,6 +229,19 @@ namespace UnlitSocket
             base.CloseSocket(token, withCallback);
             var currentNumber = Interlocked.Decrement(ref m_CurrentConnectionCount);
 
+            //serverside, if it does not support recycle of socket, let's dispose
+            //this happens on windows mono. recycle works on mono in linux
+            if (token.Socket.Connected)
+            {
+                try
+                {
+                    token.Socket.Dispose();
+                }
+                catch { }
+                token.RebuildSocket();
+                m_Logger?.Warning("Socket rebuilt as it doesn't support reuse");
+            }
+
             m_Logger?.Debug($"Client {token.ConnectionID} Disconnected, Current Count : {currentNumber}");
             // decrement the counter keeping track of the total number of clients connected to the server
             m_FreeConnectionIds.Enqueue(token.ConnectionID);

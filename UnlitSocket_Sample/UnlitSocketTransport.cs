@@ -1,11 +1,10 @@
 ﻿//// wraps Telepathy for use as HLAPI TransportLayer
 //using System;
+//using System.Collections;
 //using System.Collections.Generic;
-//using System.ComponentModel;
 //using System.Net;
 //using System.Net.Sockets;
 //using UnityEngine;
-//using UnityEngine.Serialization;
 
 //namespace Mirror
 //{
@@ -23,6 +22,8 @@
 //        protected UnlitSocket.Client client = new UnlitSocket.Client();
 //        protected UnlitSocket.Server server = new UnlitSocket.Server();
 //        protected UnlitSocketLogger logger = new UnlitSocketLogger();
+
+//        Coroutine m_ConnectCoroutine = null;
 
 //        List<UnlitSocket.ReceivedMessage> receivedMessages = new List<UnlitSocket.ReceivedMessage>();
 
@@ -76,7 +77,12 @@
 
 //        // client
 //        public override bool ClientConnected() => client.Status == UnlitSocket.ConnectionStatus.Connected;
-//        public override void ClientConnect(string address) => client.Connect(address, port);
+//        public override void ClientConnect(string address)
+//        {
+//            client.Connect(address, port);
+//            if (m_ConnectCoroutine != null) StopCoroutine(m_ConnectCoroutine);
+//            m_ConnectCoroutine = StartCoroutine(WaitForConnect());
+//        }
 //        public override void ClientConnect(Uri uri)
 //        {
 //            if (uri.Scheme != Scheme)
@@ -84,7 +90,19 @@
 
 //            int serverPort = uri.IsDefaultPort ? port : uri.Port;
 //            client.Connect(uri.Host, serverPort);
+//            if (m_ConnectCoroutine != null) StopCoroutine(m_ConnectCoroutine);
+//            m_ConnectCoroutine = StartCoroutine(WaitForConnect());
 //        }
+
+//        IEnumerator WaitForConnect()
+//        {
+//            while (client.Status == UnlitSocket.ConnectionStatus.Connecting)
+//                yield return null;
+//            if (client.Status == UnlitSocket.ConnectionStatus.Disconnected)
+//                OnClientDisconnected.Invoke();
+//        }
+
+
 //        public override bool ClientSend(int channelId, ArraySegment<byte> segment)
 //        {
 //            var msg = UnlitSocket.Message.Pop();
@@ -117,13 +135,12 @@
 //            }
 //        }
 
-//        public override void ClientDisconnect() => client.Disconnect();
+//        public override void ClientDisconnect()
+//        {
+//            if (m_ConnectCoroutine != null) StopCoroutine(m_ConnectCoroutine);
+//            client.Disconnect();
+//        }
 
-//        // IMPORTANT: set script execution order to >1000 to call Transport's
-//        //            LateUpdate after all others. Fixes race condition where
-//        //            e.g. in uSurvival Transport would apply Cmds before
-//        //            ShoulderRotation.LateUpdate, resulting in projectile
-//        //            spawns at the point before shoulder rotation.
 //        public void LateUpdate()
 //        {
 //            ProcessClientMessages();
@@ -184,14 +201,6 @@
 //            }
 //            catch (SocketException)
 //            {
-//                // using server.listener.LocalEndpoint causes an Exception
-//                // in UWP + Unity 2019:
-//                //   Exception thrown at 0x00007FF9755DA388 in UWF.exe:
-//                //   Microsoft C++ exception: Il2CppExceptionWrapper at memory
-//                //   location 0x000000E15A0FCDD0. SocketException: An address
-//                //   incompatible with the requested protocol was used at
-//                //   System.Net.Sockets.Socket.get_LocalEndPoint ()
-//                // so let's at least catch it and recover
 //                return "unknown";
 //            }
 //        }
@@ -200,7 +209,7 @@
 //        // common
 //        public override void Shutdown()
 //        {
-//            Debug.Log("TelepathyTransport Shutdown()");
+//            Debug.Log("UnlitSocketTransport Shutdown()");
 //            if (client.Status != UnlitSocket.ConnectionStatus.Disconnected) client.Disconnect();
 //            if (server.IsRunning) server.Stop();
 //        }

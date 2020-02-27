@@ -39,8 +39,6 @@ namespace UnlitSocket
             Status = ConnectionStatus.Connecting;
             RemoteEndPoint = remoteEndPoint;
 
-            //call async function but to support synchronized call, we create socket and connect here
-            if (m_Token.Socket.IsBound) m_Token.RebuildSocket();
             var asyncResult = m_Token.Socket.BeginConnect(RemoteEndPoint, null, null);
 
             DisconnectedEvent.Reset();
@@ -60,7 +58,7 @@ namespace UnlitSocket
                 //now it's connected
                 Status = ConnectionStatus.Connected;
                 m_Token.IsConnected = true;
-                m_Logger?.Debug($"Connection {ClientID} has been connected to server");
+                m_Logger?.Debug($"Connected to server");
 
                 try
                 {
@@ -105,8 +103,8 @@ namespace UnlitSocket
         {
             try
             {
-                m_Token.Socket.Disconnect(true);
-                
+                //dispose right away, in mono client, disconnect hangs
+                if(m_Token.IsConnected) m_Token.Socket.Dispose();
             }
             catch { }
 
@@ -118,6 +116,16 @@ namespace UnlitSocket
         {
             Status = ConnectionStatus.Disconnected;
             base.CloseSocket(token, withCallback);
+
+            //on client, just rebuild socket, it's needed for both mono/.net
+            try
+            {
+                token.Socket.Dispose();
+            }
+            catch { }
+            token.RebuildSocket();
+
+            m_Logger?.Debug($"Disconnected from server");
             DisconnectedEvent.Set();
         }
     }

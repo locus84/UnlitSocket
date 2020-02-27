@@ -13,7 +13,6 @@ namespace UnlitSocket
         int m_InitialBufferCount = 0;
         public int ConnectionID { get; private set; }
         internal Socket Socket { get; set; }
-        internal int LastTransferCount;
 
         internal byte[] SizeReadBuffer = new byte[2];
         internal SocketAsyncEventArgs ReceiveArg { get; private set; }
@@ -56,6 +55,7 @@ namespace UnlitSocket
             //received properly
             if (m_ReadTotal == m_SizeTotal)
             {
+                //set size of the current message
                 CurrentMessage.Size = m_SizeTotal;
                 return true;
             }
@@ -91,7 +91,7 @@ namespace UnlitSocket
             socket.DualMode = true;
 
             //linger for reuse socket
-            socket.LingerState = new LingerOption(false, 0);
+            socket.LingerState = new LingerOption(true, 0);
 
             //keep alive setting
             if(keepAlive)
