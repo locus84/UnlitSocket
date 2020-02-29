@@ -152,7 +152,8 @@ namespace UnlitSocket
 
         public void GetNextMessages(List<ReceivedMessage> messageCache)
         {
-            messageCache.Clear();
+            //don't clear message cache, as client should handle on their own
+            //messageCache.Clear();
             m_ReceivedMessages.DequeueAll(messageCache);
         }
 
