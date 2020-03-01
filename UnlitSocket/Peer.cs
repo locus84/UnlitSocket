@@ -156,7 +156,7 @@ namespace UnlitSocket
             m_ReceivedMessages.DequeueAll(messageCache);
         }
 
-        protected virtual bool CloseSocket(Connection connection, bool withCallback)
+        protected virtual void CloseSocket(Connection connection, bool withCallback)
         {
             //were we receiving message? if ture, clear message
             if (connection.CurrentMessage != null)
@@ -165,7 +165,7 @@ namespace UnlitSocket
                 connection.CurrentMessage = null;
             }
 
-            var result = connection.CloseSocket();
+            connection.CloseSocket();
             //connected false can be called anywhere, but disconnect event should be called once
 
             if(withCallback)
@@ -174,8 +174,6 @@ namespace UnlitSocket
                 catch (Exception e) { m_Logger?.Exception(e); }
                 connection.DisconnectEvent.Signal();
             }
-
-            return result;
         }
 
         //default message handler, add received messages to message queue by created new ReceivedMessage

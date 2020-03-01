@@ -112,8 +112,10 @@ namespace UnlitSocket
         {
             try
             {
+                //in case of already disconnected
+                if (!IsConnected) return false;
                 bool disconnectSuccess = false;
-                lock (this)
+                lock (this) //try to minimize lock
                 {
                     if(IsConnected)
                     {

@@ -113,11 +113,11 @@ namespace UnlitSocket
             m_Connection.DisconnectEvent.Wait();
         }
 
-        protected override bool CloseSocket(Connection connection, bool withCallback)
+        protected override void CloseSocket(Connection connection, bool withCallback)
         {
             Status = ConnectionStatus.Disconnected;
             m_Logger?.Debug($"Disconnected from server");
-            return base.CloseSocket(connection, withCallback);
+            base.CloseSocket(connection, withCallback);
         }
     }
 }

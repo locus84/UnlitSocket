@@ -73,7 +73,7 @@ namespace UnlitSocket
             }
 
             args.UserToken = connection;
-            args.AcceptSocket = connection.Socket;
+            args.AcceptSocket = connection.Socket; 
             if (!socket.AcceptAsync(args)) ProcessAccept(socket, args);
         }
 
@@ -211,24 +211,21 @@ namespace UnlitSocket
             return connection.IsConnected ? (IPEndPoint)connection.Socket.RemoteEndPoint : null;
         }
 
-        protected override bool CloseSocket(Connection connection, bool withCallback)
+        protected override void CloseSocket(Connection connection, bool withCallback)
         {
-            var result = base.CloseSocket(connection, withCallback);
-
+            base.CloseSocket(connection, withCallback);
             // decrement the counter keeping track of the total number of clients connected to the server
             ThreadPool.RegisterWaitForSingleObject(connection.DisconnectEvent.WaitHandle, m_DisconnectWaitCallback, connection, 3000, true);
-            return result;
         }
 
         private void OnDisconnectComplete(object sender, bool success)
         {
             var connection = sender as Connection;
+
+            //on mono windows, event we disconnect and shutdown a socket, it remains connected, let's dispose in that case
             if (connection.Socket.Connected)
             {
-                try
-                {
-                    connection.Socket.Dispose();
-                }
+                try{ connection.Socket.Dispose(); }
                 catch { }
                 connection.RebuildSocket();
                 m_Logger?.Warning("Socket Rebuilt As it does not support reuse");
