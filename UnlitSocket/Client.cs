@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -8,18 +7,18 @@ namespace UnlitSocket
 {
     public class Client : Peer
     {
-        public int ClientID => m_Token.ConnectionID;
+        public int ClientID => m_Connection.ConnectionID;
 
         public IPEndPoint RemoteEndPoint { get; private set; }
         public ConnectionStatus Status { get; private set; } = ConnectionStatus.Disconnected;
 
-        UserToken m_Token;
-        ManualResetEvent DisconnectedEvent = new ManualResetEvent(true);
+        Connection m_Connection;
+        bool initial = true;
 
         public Client()
         {
-            m_Token = new UserToken(0, this);
-            m_Token.ReceiveArg.Completed += ProcessReceive;
+            m_Connection = new Connection(0, this);
+            m_Connection.ReceiveArg.Completed += ProcessReceive;
         }
 
         public void Connect(string host, int port, float timeOutSec = 5f)
@@ -36,15 +35,26 @@ namespace UnlitSocket
                 return;
             }
 
-            Status = ConnectionStatus.Connecting;
             RemoteEndPoint = remoteEndPoint;
 
-            var asyncResult = m_Token.Socket.BeginConnect(RemoteEndPoint, null, null);
+            m_Connection.DisconnectEvent.Reset(1);
 
-            DisconnectedEvent.Reset();
+            try
+            {
+                if (initial) initial = false;
+                else m_Connection.RebuildSocket();
 
-            var connectThread = new Thread(() => ConnectInternal(timeOutSec, asyncResult));
-            connectThread.Start();
+                var asyncResult = m_Connection.Socket.BeginConnect(RemoteEndPoint, null, null);
+                var connectThread = new Thread(() => ConnectInternal(timeOutSec, asyncResult));
+
+                Status = ConnectionStatus.Connecting;
+                connectThread.Start();
+            }
+            catch
+            {
+                m_Connection.DisconnectEvent.Signal();
+                throw;
+            }
         }
 
         private void ConnectInternal(float timeOut, IAsyncResult connectAr)
@@ -53,28 +63,29 @@ namespace UnlitSocket
             {
                 //wait for connecting
                 if (!connectAr.AsyncWaitHandle.WaitOne((int)(timeOut * 1000), true)) throw new SocketException(10060);
-                m_Token.Socket.EndConnect(connectAr);
+                m_Connection.Socket.EndConnect(connectAr);
 
                 //now it's connected
                 Status = ConnectionStatus.Connected;
-                m_Token.IsConnected = true;
+                m_Connection.IsConnected = true;
                 m_Logger?.Debug($"Connected to server");
 
                 try
                 {
                     m_MessageHandler.OnConnected(ClientID);
                 }
-                catch(Exception e)
+                catch (Exception e)
                 {
                     m_Logger?.Exception(e);
                 }
 
-                StartReceive(m_Token);
+                StartReceive(m_Connection);
             }
             catch (Exception e)
             {
-                CloseSocket(m_Token, false);
-                m_Logger?.Exception(e);
+                CloseSocket(m_Connection, false);
+                m_Connection.DisconnectEvent.Signal();
+                m_Logger?.Warning(e.Message);
             }
         }
 
@@ -89,44 +100,28 @@ namespace UnlitSocket
                 return false;
             }
 
-            if (!m_Token.IsConnected)
+            if (!m_Connection.IsConnected)
             {
                 message.Release();
                 return false;
             }
 
-            Send(m_Token.Socket, message);
+            Send(m_Connection, message);
             return true;
         }
 
         public void Disconnect()
         {
-            try
-            {
-                //dispose right away, in mono client, disconnect hangs
-                if(m_Token.IsConnected) m_Token.Socket.Dispose();
-            }
-            catch { }
-
-            //wait for disconnected event will synchronize receive thread.
-            DisconnectedEvent.WaitOne();
+            m_Connection.Socket.Close();
+            m_Connection.CloseSocket();
+            m_Connection.DisconnectEvent.Wait();
         }
 
-        protected override void CloseSocket(UserToken token, bool withCallback)
+        protected override bool CloseSocket(Connection connection, bool withCallback)
         {
             Status = ConnectionStatus.Disconnected;
-            base.CloseSocket(token, withCallback);
-
-            //on client, just rebuild socket, it's needed for both mono/.net
-            try
-            {
-                token.Socket.Dispose();
-            }
-            catch { }
-            token.RebuildSocket();
-
             m_Logger?.Debug($"Disconnected from server");
-            DisconnectedEvent.Set();
+            return base.CloseSocket(connection, withCallback);
         }
     }
 }

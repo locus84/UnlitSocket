@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace UnlitSocket
 {
-    public class UserToken
+    public class Connection
     {
         public bool IsConnected { get; internal set; } = false;
         int m_ReadTotal = 0;
@@ -15,9 +15,10 @@ namespace UnlitSocket
         internal Socket Socket { get; set; }
 
         internal byte[] SizeReadBuffer = new byte[2];
-        internal SocketAsyncEventArgs ReceiveArg { get; private set; }
+        internal ReceiveEventArgs ReceiveArg { get; private set; }
         internal Message CurrentMessage = null;
         internal Peer Peer;
+        internal CountdownEvent DisconnectEvent = new CountdownEvent(0);
 
         internal void ReadyToReceiveLength()
         {
@@ -63,13 +64,13 @@ namespace UnlitSocket
             return false;
         }
 
-        internal UserToken(int id, Peer peer)
+        internal Connection(int id, Peer peer)
         {
             Peer = peer;
             ConnectionID = id;
-            ReceiveArg = new SocketAsyncEventArgs();
+            ReceiveArg = new ReceiveEventArgs();
             ReceiveArg.BufferList = new List<ArraySegment<byte>>();
-            ReceiveArg.UserToken = this;
+            ReceiveArg.Connection = this;
 
             Socket = CreateSocket(Peer.NoDelay, Peer.KeepAlive, 30000, 5000);
         }
@@ -105,6 +106,30 @@ namespace UnlitSocket
             }
 
             return socket;
+        }
+
+        internal bool CloseSocket()
+        {
+            try
+            {
+                bool disconnectSuccess = false;
+                lock (this)
+                {
+                    if(IsConnected)
+                    {
+                        disconnectSuccess = true;
+                        IsConnected = false;
+                    }
+                }
+                if (disconnectSuccess)
+                {
+                    Socket.Shutdown(SocketShutdown.Both);
+                    Socket.Disconnect(true);
+                    return true;
+                }
+            }
+            catch{}
+            return false;
         }
     }
 }
