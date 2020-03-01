@@ -43,17 +43,15 @@ namespace UnlitSocket.Tests
         {
             Client client = new Client();
             client.SetLogger(new TestLogger());
-            //client.Connect( "localhost", Port);
+            client.Connect( "localhost", Port);
 
-            //// I should be able to disconnect right away
-            //// if connection was pending,  it should just cancel
-            //client.Disconnect();
+            // I should be able to disconnect right away
+            // if connection was pending,  it should just cancel
+            client.Disconnect();
 
-            //Assert.IsTrue(client.Status == ConnectionStatus.Disconnected);
+            Assert.IsTrue(client.Status == ConnectionStatus.Disconnected);
 
             //try connect with wrong server ip
-
-            //client.Connect("localhost", Port);
             client.Connect("192.168.0.0", Port);
             client.Disconnect();
 
@@ -96,7 +94,7 @@ namespace UnlitSocket.Tests
         [Test]
         public void MultipleClientHangTest()
         {
-            var testCount = 10;
+            var testCount = 30;
             var clientList = new List<Client>();
 
             for (int i = 0; i < testCount; i++)

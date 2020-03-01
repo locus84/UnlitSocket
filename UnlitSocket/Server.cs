@@ -34,7 +34,7 @@ namespace UnlitSocket
         // incoming connection requests.    
         public void Start(int port)
         {
-            if (IsRunning) throw new Exception("Server is already running");
+            if (IsRunning) return;
 
             Port = port;
             // create the socket which listens for incoming connections
@@ -122,12 +122,12 @@ namespace UnlitSocket
 
         public void Stop()
         {
-            if (!IsRunning) throw new Exception("Server is not running");
+            if (!IsRunning) return;
 
             IsRunning = false;
             m_ListenSocket.Close();
             m_ListenSocket = null;
-            //m_RunningResetEvent.WaitOne();
+            m_RunningResetEvent.WaitOne();
 
             //now usertokens are fixed count
             foreach (var connection in m_ConnectionList)

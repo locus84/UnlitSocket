@@ -29,11 +29,7 @@ namespace UnlitSocket
 
         public void Connect(IPEndPoint remoteEndPoint, float timeOutSec = 5f)
         {
-            if (Status != ConnectionStatus.Disconnected)
-            {
-                m_Logger?.Debug("Invalid connect function call");
-                return;
-            }
+            if (Status != ConnectionStatus.Disconnected) return;
 
             RemoteEndPoint = remoteEndPoint;
 
