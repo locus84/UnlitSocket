@@ -115,8 +115,6 @@ namespace UnlitSocket.Tests
                 var client = new Client();
                 client.Connect("localhost", Port);
             }
-
-            Thread.Sleep(100);
         }
 
         [Test]

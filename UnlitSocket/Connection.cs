@@ -8,71 +8,104 @@ namespace UnlitSocket
     public class Connection
     {
         public bool IsConnected { get; internal set; } = false;
-        int m_ReadTotal = 0;
-        int m_SizeTotal = 0;
+        int m_BytesToReceive = 0;
         int m_InitialBufferCount = 0;
         public int ConnectionID { get; private set; }
         internal Socket Socket { get; set; }
 
         internal byte[] SizeReadBuffer = new byte[2];
-        internal ReceiveEventArgs ReceiveArg { get; private set; }
+        internal SocketArgs SocketArg { get; private set; }
+        internal SocketArgs DisconnectArg { get; private set; }
         internal Message CurrentMessage = null;
         internal Peer Peer;
         internal CountdownEvent DisconnectEvent = new CountdownEvent(0);
-
-        internal void ReadyToReceiveLength()
-        {
-            ReceiveArg.BufferList.Clear();
-            ReceiveArg.BufferList.Add(new ArraySegment<byte>(SizeReadBuffer));
-            ReceiveArg.BufferList = ReceiveArg.BufferList;
-            m_ReadTotal = 0;
-        }
-
-        internal bool HandleLengthReceive(int byteTransferred)
-        {
-            if (m_ReadTotal + byteTransferred == SizeReadBuffer.Length)
-            {
-                //now we have size howmuch we can receive, set it
-                m_SizeTotal = MessageReader.ReadUInt16(SizeReadBuffer);
-                return true;
-            }
-            //this is rare case, only one byte is received due to packet drop, we have to wait for another byte
-            m_ReadTotal += byteTransferred;
-            ReceiveArg.BufferList[0] = new ArraySegment<byte>(SizeReadBuffer, m_ReadTotal, SizeReadBuffer.Length - m_ReadTotal);
-            ReceiveArg.BufferList = ReceiveArg.BufferList;
-            return false;
-        }
-
-        internal void ReadyToReceiveMessage()
-        {
-            CurrentMessage.BindToArgsReceive(ReceiveArg, m_SizeTotal);
-            m_ReadTotal = 0;
-            m_InitialBufferCount = ReceiveArg.BufferList.Count;
-        }
-
-        internal bool AppendReceivedBuffer(int receiveCount)
-        {
-            m_ReadTotal += receiveCount;
-            //received properly
-            if (m_ReadTotal == m_SizeTotal)
-            {
-                //set size of the current message
-                CurrentMessage.Size = m_SizeTotal;
-                return true;
-            }
-            Message.AdvanceRecevedOffset(ReceiveArg, m_InitialBufferCount, m_ReadTotal);
-            return false;
-        }
 
         internal Connection(int id, Peer peer)
         {
             Peer = peer;
             ConnectionID = id;
-            ReceiveArg = new ReceiveEventArgs();
-            ReceiveArg.BufferList = new List<ArraySegment<byte>>();
-            ReceiveArg.Connection = this;
-
+            SocketArg = new SocketArgs();
+            SocketArg.BufferList = new List<ArraySegment<byte>>();
+            SocketArg.Connection = this;
+            DisconnectArg = new SocketArgs();
+            DisconnectArg.Connection = this;
+            DisconnectArg.DisconnectReuseSocket = true;
             Socket = CreateSocket(Peer.NoDelay, Peer.KeepAlive, 30000, 5000);
+            ReadyToReceiveLength();
+        }
+
+        internal bool TryReleaseMessage(out Message message)
+        {
+            if (SocketArg.Message != null)
+            {
+                //true means we have received all bytes for message
+                if (AppendReceivedBuffer())
+                {
+                    message = SocketArg.Message;
+                    SocketArg.Message = null;
+                    ReadyToReceiveLength();
+                    return true;
+                }
+            }
+            else
+            {
+                //true means we have received all bytes for length
+                if (HandleLengthReceive())
+                {
+                    //now prepare a message to receive actual data
+                    SocketArg.Message = Message.Pop();
+                    ReadyToReceiveMessage();
+                }
+            }
+
+            message = null;
+            return false;
+        }
+
+        internal void ReadyToReceiveLength()
+        {
+            SocketArg.BufferList.Clear();
+            SocketArg.BufferList.Add(new ArraySegment<byte>(SizeReadBuffer));
+            SocketArg.BufferList = SocketArg.BufferList;
+            m_BytesToReceive = SizeReadBuffer.Length;
+        }
+
+        internal bool HandleLengthReceive()
+        {
+            m_BytesToReceive -= SocketArg.BytesTransferred;
+            if (m_BytesToReceive == 0)
+            {
+                //now we have size howmuch we can receive, set it
+                m_BytesToReceive = MessageReader.ReadUInt16(SizeReadBuffer);
+                return true;
+            }
+            //this is rare case, only one byte is received due to packet drop, we have to wait for another byte
+            SocketArg.BufferList[0] = new ArraySegment<byte>(SizeReadBuffer, SizeReadBuffer.Length - m_BytesToReceive, m_BytesToReceive);
+            SocketArg.BufferList = SocketArg.BufferList;
+            return false;
+        }
+
+        internal void ReadyToReceiveMessage()
+        {
+            CurrentMessage.BindToArgsReceive(SocketArg, m_BytesToReceive);
+            CurrentMessage.Size = m_BytesToReceive;
+            m_InitialBufferCount = SocketArg.BufferList.Count;
+        }
+
+        private bool AppendReceivedBuffer()
+        {
+            m_BytesToReceive -= SocketArg.BytesTransferred;
+            //received properly
+            if (m_BytesToReceive == 0) return true;
+            var bytesReceived = CurrentMessage.Size - m_BytesToReceive;
+            Message.AdvanceRecevedOffset(SocketArg, m_InitialBufferCount, bytesReceived);
+            return false;
+        }
+
+        internal void ClearReceiving()
+        {
+            SocketArg.ClearMessage();
+            ReadyToReceiveLength();
         }
 
         internal void RebuildSocket()
@@ -108,7 +141,7 @@ namespace UnlitSocket
             return socket;
         }
 
-        internal bool CloseSocket()
+        internal bool Disconnect()
         {
             try
             {
@@ -125,8 +158,17 @@ namespace UnlitSocket
                 }
                 if (disconnectSuccess)
                 {
-                    Socket.Shutdown(SocketShutdown.Both);
-                    Socket.Disconnect(true);
+                    DisconnectEvent.AddCount();
+                    try
+                    {
+                        Socket.Shutdown(SocketShutdown.Both);
+                        if (!Socket.DisconnectAsync(DisconnectArg))
+                            Peer.ProcessDisconnect(Socket, DisconnectArg);
+                    }
+                    catch
+                    {
+                        DisconnectEvent.Signal();
+                    }
                     return true;
                 }
             }

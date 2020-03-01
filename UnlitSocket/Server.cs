@@ -56,70 +56,6 @@ namespace UnlitSocket
             StartAccept(m_ListenSocket, acceptEventArg);
         }
 
-        // Begins an operation to accept a connection request from the client 
-        private void StartAccept(Socket socket, SocketAsyncEventArgs args)
-        {
-            Connection connection = null;
-
-            if (m_FreeConnectionIds.TryDequeue(out var connID))
-            {
-                connection = m_ConnectionList[connID - 1];
-            }
-            else
-            {
-                connection = new Connection(m_ConnectionList.Count + 1, this);
-                connection.ReceiveArg.Completed += ProcessReceive;
-                m_ConnectionList.Add(connection);
-            }
-
-            args.UserToken = connection;
-            args.AcceptSocket = connection.Socket; 
-            if (!socket.AcceptAsync(args)) ProcessAccept(socket, args);
-        }
-
-        private void ProcessAccept(object sender, SocketAsyncEventArgs args)
-        {
-            var connection = (Connection)args.UserToken;
-
-            if (args.SocketError == SocketError.Success)
-            {
-                var socket = sender as Socket;
-                var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
-                //send initial message that indicates socket is accepted
-                connection.IsConnected = true;
-
-                m_Logger?.Debug($"Client {connection.ConnectionID} connected, Current Count : {currentNumber}");
-
-                try
-                {
-                    m_MessageHandler.OnConnected(connection.ConnectionID);
-                }
-                catch (Exception e)
-                {
-                    m_Logger?.Exception(e);
-                }
-
-                connection.DisconnectEvent.Reset(1);
-                StartReceive(connection);
-
-                args.AcceptSocket = null;
-                StartAccept(socket, args);
-            }
-            else
-            {
-                connection.CloseSocket();
-
-                m_FreeConnectionIds.Enqueue(connection.ConnectionID);
-                var listenSocket = (Socket)sender;
-
-                //check if valid listen socket
-                if (IsRunning)
-                    StartAccept(listenSocket, args);
-                else
-                    m_RunningResetEvent.Set();
-            }
-        }
-
         public void Stop()
         {
             if (!IsRunning) return;
@@ -130,10 +66,62 @@ namespace UnlitSocket
             m_RunningResetEvent.WaitOne();
 
             //now usertokens are fixed count
-            foreach (var connection in m_ConnectionList)
+            foreach (var conn in m_ConnectionList)
             {
                 //socket could be already disposed
-                connection.CloseSocket();
+                conn.Disconnect();
+            }
+        }
+
+        // Begins an operation to accept a connection request from the client 
+        private void StartAccept(Socket socket, SocketAsyncEventArgs args)
+        {
+            Connection conn;
+
+            if (m_FreeConnectionIds.TryDequeue(out var connID))
+            {
+                conn = m_ConnectionList[connID - 1];
+            }
+            else
+            {
+                conn = CreateConnection(m_ConnectionList.Count + 1);
+                m_ConnectionList.Add(conn);
+            }
+
+            args.UserToken = conn;
+            args.AcceptSocket = conn.Socket; 
+            if (!socket.AcceptAsync(args)) ProcessAccept(socket, args);
+        }
+
+        private void ProcessAccept(object sender, SocketAsyncEventArgs args)
+        {
+            var conn = (Connection)args.UserToken;
+
+            if (args.SocketError == SocketError.Success)
+            {
+                var socket = sender as Socket;
+                var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
+                //send initial message that indicates socket is accepted
+
+                conn.DisconnectEvent.Reset(1);
+                conn.IsConnected = true;
+
+                m_Logger?.Debug($"Client {conn.ConnectionID} connected, Current Count : {currentNumber}");
+                m_MessageHandler.OnConnected(conn.ConnectionID);
+
+                StartReceive(conn);
+                StartAccept(socket, args);
+            }
+            else
+            {
+                m_FreeConnectionIds.Enqueue(conn.ConnectionID);
+                var listenSocket = (Socket)sender;
+
+                //check if valid listen socket
+                if (IsRunning)
+                    StartAccept(listenSocket, args);
+                else
+                    m_RunningResetEvent.Set();
             }
         }
 
@@ -171,15 +159,15 @@ namespace UnlitSocket
                 return false;
             }
 
-            var connection = m_ConnectionList[connectionID - 1];
+            var conn = m_ConnectionList[connectionID - 1];
 
-            if (!connection.IsConnected)
+            if (!conn.IsConnected)
             {
                 message.Release();
                 return false;
             }
 
-            Send(connection, message);
+            Send(conn, message);
             return true;
         }
 
@@ -188,51 +176,35 @@ namespace UnlitSocket
         /// </summary>
         public bool Disconnect(int connectionId)
         {
-            if (connectionId <= 0 || connectionId > m_ConnectionList.Count)
-            {
-                return false;
-            }
-            else
-            {
-                var connection = m_ConnectionList[connectionId - 1];
-                return connection.CloseSocket();
-            }
+            //is valid connection number
+            if (connectionId <= 0 || connectionId > m_ConnectionList.Count) return false;
+
+            var connection = m_ConnectionList[connectionId - 1];
+            return connection.Disconnect();
         }
 
         public IPEndPoint GetConnectionAddress(int connectionId)
         {
-            //1 is reserved, so let it -1 index of tokenlist
-            if (connectionId <= 0 || connectionId > m_ConnectionList.Count)
-            {
-                return null;
-            }
+            //is valid connection number
+            if (connectionId <= 0 || connectionId > m_ConnectionList.Count) return null;
 
-            var connection = m_ConnectionList[connectionId - 1];
-            return connection.IsConnected ? (IPEndPoint)connection.Socket.RemoteEndPoint : null;
+            var conn = m_ConnectionList[connectionId - 1];
+            return conn.IsConnected ? (IPEndPoint)conn.Socket.RemoteEndPoint : null;
         }
 
-        protected override void CloseSocket(Connection connection, bool withCallback)
+        internal override void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
         {
-            base.CloseSocket(connection, withCallback);
-            // decrement the counter keeping track of the total number of clients connected to the server
-            ThreadPool.RegisterWaitForSingleObject(connection.DisconnectEvent.WaitHandle, m_DisconnectWaitCallback, connection, 3000, true);
+            base.ProcessDisconnect(sender, e);
+            var args = e as SocketArgs;
+            ThreadPool.RegisterWaitForSingleObject(args.Connection.DisconnectEvent.WaitHandle, m_DisconnectWaitCallback, args.Connection, 3000, true);
         }
 
         private void OnDisconnectComplete(object sender, bool success)
         {
-            var connection = sender as Connection;
-
-            //on mono windows, event we disconnect and shutdown a socket, it remains connected, let's dispose in that case
-            if (connection.Socket.Connected)
-            {
-                try{ connection.Socket.Dispose(); }
-                catch { }
-                connection.RebuildSocket();
-                m_Logger?.Warning("Socket Rebuilt As it does not support reuse");
-            }
-            m_FreeConnectionIds.Enqueue(connection.ConnectionID);
+            var conn = sender as Connection;
+            m_FreeConnectionIds.Enqueue(conn.ConnectionID);
             var currentNumber = Interlocked.Decrement(ref m_CurrentConnectionCount);
-            m_Logger?.Debug($"Client {connection.ConnectionID} Disconnected, Current Count : {currentNumber}");
+            m_Logger?.Debug($"Client {conn.ConnectionID} Disconnected, Current Count : {currentNumber}");
         }
     }
 }

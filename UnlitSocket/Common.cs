@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
 namespace UnlitSocket
@@ -86,6 +87,21 @@ namespace UnlitSocket
 
         [FieldOffset(0)]
         public Guid guidValue;
+    }
+
+    public class SocketArgs : SocketAsyncEventArgs
+    {
+        public Message Message;
+        public Connection Connection;
+
+        public void ClearMessage()
+        {
+            if (Message != null)
+            {
+                Message.Release();
+                Message = null;
+            }
+        }
     }
 }
 

@@ -11,7 +11,7 @@ namespace UnlitSocket
         public bool NoDelay { get; set; } = true;
         public bool KeepAlive { get; set; } = true;
 
-        protected ConcurrentQueue<SendEventArgs> m_SendArgsPool = new ConcurrentQueue<SendEventArgs>();
+        protected ConcurrentQueue<SocketArgs> m_SendArgsPool = new ConcurrentQueue<SocketArgs>();
         protected ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();
 
         protected ILogReceiver m_Logger;
@@ -29,119 +29,127 @@ namespace UnlitSocket
             m_MessageHandler = new DefaultMessageHandler(m_ReceivedMessages);
         }
 
+        protected Connection CreateConnection(int connectionId)
+        {
+            var newConn = new Connection(connectionId, this);
+            newConn.SocketArg.Completed += ProcessReceive;
+            newConn.DisconnectArg.Completed += ProcessDisconnect;
+            return newConn;
+        }
+
+        #region SendHandler
         /// <summary>
         /// message must be retained before calling this function
         /// </summary>
-        protected virtual void Send(Connection connection, Message message)
+        protected virtual void Send(Connection conn, Message message)
         {
-            var socket = connection.Socket;
-            SendEventArgs sendArgs;
-            if (!m_SendArgsPool.TryDequeue(out sendArgs))
+            var socket = conn.Socket;
+            SocketArgs args;
+            if (!m_SendArgsPool.TryDequeue(out args))
             {
-                sendArgs = new SendEventArgs();
-                sendArgs.BufferList = new List<ArraySegment<byte>>();
-                sendArgs.Completed += ProcessSend;
+                args = new SocketArgs();
+                args.BufferList = new List<ArraySegment<byte>>();
+                args.Completed += ProcessSend;
             }
 
-            sendArgs.Message = message;
-            sendArgs.Connection = connection;
-            message.BindToArgsSend(sendArgs);
+            args.Message = message;
+            args.Connection = conn;
+            message.BindToArgsSend(args);
 
-            connection.DisconnectEvent.AddCount();
+            conn.DisconnectEvent.AddCount();
 
             try
             {
-                bool isPending = socket.SendAsync(sendArgs);
-                if (!isPending) ProcessSend(socket, sendArgs);
+                bool isPending = socket.SendAsync(args);
+                if (!isPending) ProcessSend(socket, args);
             }
             catch(Exception e)
             {
                 m_Logger?.Exception(e);
-                sendArgs.Message.Release();
-                sendArgs.Message = null;
-                sendArgs.Connection.CloseSocket();
-                sendArgs.Connection.DisconnectEvent.Signal();
-                sendArgs.Connection = null;
-                m_SendArgsPool.Enqueue(sendArgs);
+                args.ClearMessage();
+                args.Connection.Disconnect();
+                args.Connection.DisconnectEvent.Signal();
+                args.Connection = null;
+                m_SendArgsPool.Enqueue(args);
             }
         }
 
         protected virtual void ProcessSend(object sender, SocketAsyncEventArgs e)
         {
-            var sendArgs = (SendEventArgs)e;
+            var sendArgs = (SocketArgs)e;
             //it doesn't matter we success or not
-            sendArgs.Message.Release();
-            sendArgs.Message = null;
             
             if(e.SocketError != SocketError.Success)
             {
                 m_Logger?.Warning("Socket Error : " + e.SocketError);
-                sendArgs.Connection.CloseSocket();
+                sendArgs.Connection.Disconnect();
             }
 
+            sendArgs.ClearMessage();
             sendArgs.Connection.DisconnectEvent.Signal();
             sendArgs.Connection = null;
             m_SendArgsPool.Enqueue(sendArgs);
         }
+        #endregion
 
+        #region ReceiveHandler
         protected void StartReceive(Connection connection)
         {
             try
             {
-                connection.ReadyToReceiveLength();
-                bool isPending = connection.Socket.ReceiveAsync(connection.ReceiveArg);
-                if (!isPending) ProcessReceive(connection.Socket, connection.ReceiveArg);
+                bool isPending = connection.Socket.ReceiveAsync(connection.SocketArg);
+                if (!isPending) ProcessReceive(connection.Socket, connection.SocketArg);
             }
             catch
             {
-                CloseSocket(connection, true);
+                StopReceive(connection, true);
             }
         }
 
         protected void ProcessReceive(object sender, SocketAsyncEventArgs e)
         {
-            var receiveArgs = e as ReceiveEventArgs;
+            var receiveArgs = e as SocketArgs;
             var connection = receiveArgs.Connection;
 
-            var transferCount = e.BytesTransferred;
-            if (transferCount > 0 && e.SocketError == SocketError.Success)
+            if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
             {
-                if (connection.CurrentMessage != null)
-                {
-                    //true means we have received all bytes for message
-                    if (connection.AppendReceivedBuffer(transferCount)) 
-                    {
-                        m_MessageHandler.OnDataReceived(connection.ConnectionID, connection.CurrentMessage);
-                        //clear message
-                        connection.ReadyToReceiveLength();
-                        connection.CurrentMessage = null;
-                    }
-                }
-                else
-                {
-                    //true means we have received all bytes for length
-                    if (connection.HandleLengthReceive(transferCount))
-                    {
-                        //now prepare a message to receive actual data
-                        connection.CurrentMessage = Message.Pop();
-                        connection.ReadyToReceiveMessage();
-                    }
-                }
-
-                try
-                {
-                    bool isPending = connection.Socket.ReceiveAsync(connection.ReceiveArg);
-                    if (!isPending) ProcessReceive(connection.Socket, connection.ReceiveArg);
-                }
-                catch
-                {
-                    CloseSocket(connection, true);
-                }
+                if (connection.TryReleaseMessage(out var message)) 
+                    m_MessageHandler.OnDataReceived(connection.ConnectionID, message);
+                StartReceive(connection);
             }
             else
             {
-                CloseSocket(connection, true);
+                StopReceive(connection, true);
             }
+        }
+
+        protected virtual void StopReceive(Connection connection, bool withCallback)
+        {
+            //clear receiving messages
+            connection.ClearReceiving();
+            connection.Disconnect();
+            //connected false can be called anywhere, but disconnect event should be called once
+
+            if(withCallback)
+            {
+                m_MessageHandler.OnDisconnected(connection.ConnectionID);
+                connection.DisconnectEvent.Signal();
+            }
+        }
+        #endregion
+
+        #region MessageHandler
+        //default message handler, add received messages to message queue by created new ReceivedMessage
+        private class DefaultMessageHandler : IMessageHandler
+        {
+            ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages;
+            public DefaultMessageHandler(ThreadSafeQueue<ReceivedMessage> messageQueue) => m_ReceivedMessages = messageQueue;
+            public void OnConnected(int connectionId) =>
+                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Connected));
+            public void OnDataReceived(int connectionId, Message msg) =>
+                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Data, msg));
+            public void OnDisconnected(int connectionId) =>
+                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Disconnected));
         }
 
         public bool GetNextMessage(out ReceivedMessage message)
@@ -155,39 +163,15 @@ namespace UnlitSocket
             //messageCache.Clear();
             m_ReceivedMessages.DequeueAll(messageCache);
         }
+        #endregion
 
-        protected virtual void CloseSocket(Connection connection, bool withCallback)
+        #region DisconnectHandler
+        internal virtual void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
         {
-            //were we receiving message? if ture, clear message
-            if (connection.CurrentMessage != null)
-            {
-                connection.CurrentMessage.Release();
-                connection.CurrentMessage = null;
-            }
-
-            connection.CloseSocket();
-            //connected false can be called anywhere, but disconnect event should be called once
-
-            if(withCallback)
-            {
-                try { m_MessageHandler.OnDisconnected(connection.ConnectionID); }
-                catch (Exception e) { m_Logger?.Exception(e); }
-                connection.DisconnectEvent.Signal();
-            }
+            var args = e as SocketArgs;
+            args.Connection.DisconnectEvent.Signal();
         }
-
-        //default message handler, add received messages to message queue by created new ReceivedMessage
-        private class DefaultMessageHandler : IMessageHandler
-        {
-            ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages;
-            public DefaultMessageHandler(ThreadSafeQueue<ReceivedMessage> messageQueue) => m_ReceivedMessages = messageQueue;
-            public void OnConnected(int connectionId) =>
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Connected));
-            public void OnDataReceived(int connectionId, Message msg) =>
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Data, msg));
-            public void OnDisconnected(int connectionId) =>
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Disconnected));
-        }
+        #endregion
     }
 }
 

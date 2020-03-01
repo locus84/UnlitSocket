@@ -13,13 +13,6 @@ namespace UnlitSocket
         public ConnectionStatus Status { get; private set; } = ConnectionStatus.Disconnected;
 
         Connection m_Connection;
-        bool initial = true;
-
-        public Client()
-        {
-            m_Connection = new Connection(0, this);
-            m_Connection.ReceiveArg.Completed += ProcessReceive;
-        }
 
         public void Connect(string host, int port, float timeOutSec = 5f)
         {
@@ -33,12 +26,18 @@ namespace UnlitSocket
 
             RemoteEndPoint = remoteEndPoint;
 
-            m_Connection.DisconnectEvent.Reset(1);
-
             try
             {
-                if (initial) initial = false;
-                else m_Connection.RebuildSocket();
+                if(m_Connection == null)
+                {
+                    m_Connection = CreateConnection(0);
+                }
+                else
+                {
+                    m_Connection.RebuildSocket();
+                }
+
+                m_Connection.DisconnectEvent.Reset(1);
 
                 var asyncResult = m_Connection.Socket.BeginConnect(RemoteEndPoint, null, null);
                 var connectThread = new Thread(() => ConnectInternal(timeOutSec, asyncResult));
@@ -66,20 +65,12 @@ namespace UnlitSocket
                 m_Connection.IsConnected = true;
                 m_Logger?.Debug($"Connected to server");
 
-                try
-                {
-                    m_MessageHandler.OnConnected(ClientID);
-                }
-                catch (Exception e)
-                {
-                    m_Logger?.Exception(e);
-                }
-
+                m_MessageHandler.OnConnected(ClientID);
                 StartReceive(m_Connection);
             }
             catch (Exception e)
             {
-                CloseSocket(m_Connection, false);
+                StopReceive(m_Connection, false);
                 m_Connection.DisconnectEvent.Signal();
                 m_Logger?.Warning(e.Message);
             }
@@ -109,15 +100,15 @@ namespace UnlitSocket
         public void Disconnect()
         {
             m_Connection.Socket.Close();
-            m_Connection.CloseSocket();
+            m_Connection.Disconnect();
             m_Connection.DisconnectEvent.Wait();
         }
 
-        protected override void CloseSocket(Connection connection, bool withCallback)
+        protected override void StopReceive(Connection connection, bool withCallback)
         {
             Status = ConnectionStatus.Disconnected;
             m_Logger?.Debug($"Disconnected from server");
-            base.CloseSocket(connection, withCallback);
+            base.StopReceive(connection, withCallback);
         }
     }
 }
