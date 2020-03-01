@@ -3,7 +3,6 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Net;
 using System.Collections.Concurrent;
-using System;
 
 namespace UnlitSocket
 {
@@ -69,7 +68,7 @@ namespace UnlitSocket
             foreach (var conn in m_ConnectionList)
             {
                 //socket could be already disposed
-                conn.Disconnect();
+                Disconnect(conn);
             }
         }
 
@@ -179,8 +178,8 @@ namespace UnlitSocket
             //is valid connection number
             if (connectionId <= 0 || connectionId > m_ConnectionList.Count) return false;
 
-            var connection = m_ConnectionList[connectionId - 1];
-            return connection.Disconnect();
+            var conn = m_ConnectionList[connectionId - 1];
+            return Disconnect(conn);
         }
 
         public IPEndPoint GetConnectionAddress(int connectionId)

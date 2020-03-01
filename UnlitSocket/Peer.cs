@@ -11,8 +11,8 @@ namespace UnlitSocket
         public bool NoDelay { get; set; } = true;
         public bool KeepAlive { get; set; } = true;
 
-        protected ConcurrentQueue<SocketArgs> m_SendArgsPool = new ConcurrentQueue<SocketArgs>();
-        protected ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();
+        internal ConcurrentQueue<SocketArgs> m_SendArgsPool = new ConcurrentQueue<SocketArgs>();
+        internal ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();
 
         protected ILogReceiver m_Logger;
         protected IMessageHandler m_MessageHandler;
@@ -67,7 +67,7 @@ namespace UnlitSocket
             {
                 m_Logger?.Exception(e);
                 args.ClearMessage();
-                args.Connection.Disconnect();
+                Disconnect(args.Connection);
                 args.Connection.DisconnectEvent.Signal();
                 args.Connection = null;
                 m_SendArgsPool.Enqueue(args);
@@ -82,7 +82,7 @@ namespace UnlitSocket
             if(e.SocketError != SocketError.Success)
             {
                 m_Logger?.Warning("Socket Error : " + e.SocketError);
-                sendArgs.Connection.Disconnect();
+                Disconnect(sendArgs.Connection);
             }
 
             sendArgs.ClearMessage();
@@ -102,7 +102,7 @@ namespace UnlitSocket
             }
             catch
             {
-                StopReceive(connection, true);
+                StopReceive(connection);
             }
         }
 
@@ -119,22 +119,18 @@ namespace UnlitSocket
             }
             else
             {
-                StopReceive(connection, true);
+                StopReceive(connection);
             }
         }
 
-        protected virtual void StopReceive(Connection connection, bool withCallback)
+        protected virtual void StopReceive(Connection conn)
         {
             //clear receiving messages
-            connection.ClearReceiving();
-            connection.Disconnect();
+            conn.ClearReceiving();
+            Disconnect(conn);
             //connected false can be called anywhere, but disconnect event should be called once
-
-            if(withCallback)
-            {
-                m_MessageHandler.OnDisconnected(connection.ConnectionID);
-                connection.DisconnectEvent.Signal();
-            }
+            m_MessageHandler.OnDisconnected(conn.ConnectionID);
+            conn.DisconnectEvent.Signal();
         }
         #endregion
 
@@ -166,6 +162,44 @@ namespace UnlitSocket
         #endregion
 
         #region DisconnectHandler
+        protected bool Disconnect(Connection conn)
+        {
+            //quick exit
+            if (!conn.IsConnected) return false;
+            bool disconnectSuccess = false;
+            lock (conn) //try to minimize lock
+            {
+                if (conn.IsConnected)
+                {
+                    disconnectSuccess = true;
+                    conn.IsConnected = false;
+                }
+            }
+            if (disconnectSuccess)
+            {
+                conn.DisconnectEvent.AddCount();
+                try
+                {
+                    conn.Socket.Shutdown(SocketShutdown.Both);
+                    if (!conn.Socket.DisconnectAsync(conn.DisconnectArg))
+                        ProcessDisconnect(conn.Socket, conn.DisconnectArg);
+                }
+                catch(Exception e)
+                {
+                    //if socket is disposed, then it's hard disconnected socket by client. let's rebuild socket
+                    if (e is ObjectDisposedException)
+                    {
+                        conn.RebuildSocket();
+                        Console.WriteLine("Rebuilt");
+                    }
+                    
+                    conn.DisconnectEvent.Signal();
+                }
+                return true;
+            }
+            return false;
+        }
+
         internal virtual void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
         {
             var args = e as SocketArgs;

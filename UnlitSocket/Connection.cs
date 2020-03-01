@@ -16,9 +16,8 @@ namespace UnlitSocket
         internal byte[] SizeReadBuffer = new byte[2];
         internal SocketArgs SocketArg { get; private set; }
         internal SocketArgs DisconnectArg { get; private set; }
-        internal Message CurrentMessage = null;
-        internal Peer Peer;
         internal CountdownEvent DisconnectEvent = new CountdownEvent(0);
+        internal Peer Peer;
 
         internal Connection(int id, Peer peer)
         {
@@ -87,8 +86,8 @@ namespace UnlitSocket
 
         internal void ReadyToReceiveMessage()
         {
-            CurrentMessage.BindToArgsReceive(SocketArg, m_BytesToReceive);
-            CurrentMessage.Size = m_BytesToReceive;
+            SocketArg.Message.BindToArgsReceive(SocketArg, m_BytesToReceive);
+            SocketArg.Message.Size = m_BytesToReceive;
             m_InitialBufferCount = SocketArg.BufferList.Count;
         }
 
@@ -97,7 +96,7 @@ namespace UnlitSocket
             m_BytesToReceive -= SocketArg.BytesTransferred;
             //received properly
             if (m_BytesToReceive == 0) return true;
-            var bytesReceived = CurrentMessage.Size - m_BytesToReceive;
+            var bytesReceived = SocketArg.Message.Size - m_BytesToReceive;
             Message.AdvanceRecevedOffset(SocketArg, m_InitialBufferCount, bytesReceived);
             return false;
         }
@@ -141,40 +140,6 @@ namespace UnlitSocket
             return socket;
         }
 
-        internal bool Disconnect()
-        {
-            try
-            {
-                //in case of already disconnected
-                if (!IsConnected) return false;
-                bool disconnectSuccess = false;
-                lock (this) //try to minimize lock
-                {
-                    if(IsConnected)
-                    {
-                        disconnectSuccess = true;
-                        IsConnected = false;
-                    }
-                }
-                if (disconnectSuccess)
-                {
-                    DisconnectEvent.AddCount();
-                    try
-                    {
-                        Socket.Shutdown(SocketShutdown.Both);
-                        if (!Socket.DisconnectAsync(DisconnectArg))
-                            Peer.ProcessDisconnect(Socket, DisconnectArg);
-                    }
-                    catch
-                    {
-                        DisconnectEvent.Signal();
-                    }
-                    return true;
-                }
-            }
-            catch{}
-            return false;
-        }
     }
 }
     
