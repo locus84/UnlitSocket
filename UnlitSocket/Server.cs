@@ -33,7 +33,7 @@ namespace UnlitSocket
 
         // Starts the server such that it is listening for 
         // incoming connection requests.    
-        public void Start(int port)
+        public void Start(int port, int backLog = 1024)
         {
             if (IsRunning) return;
 
@@ -44,7 +44,7 @@ namespace UnlitSocket
             m_ListenSocket.ReceiveBufferSize = ReceiveBufferSize;
             m_ListenSocket.DualMode = true;
             m_ListenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, Port));
-            m_ListenSocket.Listen(100);
+            m_ListenSocket.Listen(backLog);
 
             var acceptEventArg = new SocketAsyncEventArgs();
             acceptEventArg.Completed += ProcessAccept;

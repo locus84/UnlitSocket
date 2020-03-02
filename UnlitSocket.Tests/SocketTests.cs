@@ -8,6 +8,7 @@ namespace UnlitSocket.Tests
 {
     public class Tests
     {
+        const string Host = "localhost";
         const int Port = 9999;
         Server server;
 
@@ -45,7 +46,7 @@ namespace UnlitSocket.Tests
         {
             Client client = new Client();
             client.SetLogger(new TestLogger());
-            client.Connect("localhost", Port);
+            client.Connect(Host, Port);
 
             // I should be able to disconnect right away
             // if connection was pending,  it should just cancel
@@ -65,7 +66,7 @@ namespace UnlitSocket.Tests
         {
             Client client = new Client();
             client.SetLogger(new TestLogger());
-            client.Connect("127.0.0.1", Port).Wait();
+            client.Connect(Host, Port).Wait();
 
             for (int i = 0; i < 10; i++)
             {
@@ -100,7 +101,7 @@ namespace UnlitSocket.Tests
             for (int i = 0; i < testCount; i++)
             {
                 var client = new Client();
-                client.Connect("localhost", Port);
+                client.Connect(Host, Port);
                 clientList.Add(client);
             }
 
@@ -113,7 +114,7 @@ namespace UnlitSocket.Tests
             for (int i = 0; i < testCount; i++)
             {
                 var client = new Client();
-                client.Connect("localhost", Port);
+                client.Connect(Host, Port);
             }
         }
 

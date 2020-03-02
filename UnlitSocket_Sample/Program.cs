@@ -55,7 +55,7 @@ namespace UnlitSocket_Sample
 
         static void AddMoreClient()
         {
-            for (int i = 0; i < 100; i++)
+            for (int i = 0; i < 1000; i++)
             {
                 var newClient = new Client();
                 newClient.Connect(ep);
