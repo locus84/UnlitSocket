@@ -21,14 +21,14 @@ namespace UnlitSocket
         List<Connection> m_ConnectionList;
         ConcurrentQueue<int> m_FreeConnectionIds = new ConcurrentQueue<int>();
         ManualResetEvent m_RunningResetEvent = new ManualResetEvent(true);
-        WaitOrTimerCallback m_DisconnectWaitCallback;
+        WaitOrTimerCallback m_OnRecycleReady;
 
         public Server()
         {
             m_CurrentConnectionCount = 0;
             m_FreeConnectionIds = new ConcurrentQueue<int>();
             m_ConnectionList = new List<Connection>(16);
-            m_DisconnectWaitCallback = new WaitOrTimerCallback(OnDisconnectComplete);
+            m_OnRecycleReady = new WaitOrTimerCallback(RecycleConnection);
         }
 
         // Starts the server such that it is listening for 
@@ -208,15 +208,38 @@ namespace UnlitSocket
             return conn.IsConnected ? (IPEndPoint)conn.Socket.RemoteEndPoint : null;
         }
 
+        protected override bool Disconnect(Connection conn)
+        {
+            //failed to set disconnected, another thread already have done this
+            if (!conn.TrySetDisconnected()) return false;
+
+            //now we have right to disconnect socket. as it'll be async
+            try
+            {
+                if (conn.IsConnected) conn.Socket.Shutdown(SocketShutdown.Both);
+                if (!conn.Socket.DisconnectAsync(conn.DisconnectArg))
+                    ProcessDisconnect(conn.Socket, conn.DisconnectArg);
+            }
+            catch (Exception e)
+            {
+                //this is unexpected error, let's just rebuild socket
+                m_Logger?.Exception(e);
+                conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
+                conn.Lock.Release();
+                ThreadPool.RegisterWaitForSingleObject(conn.Lock.WaitHandle, m_OnRecycleReady, conn, 3000, true);
+            }
+            return true;
+        }
+
         internal override void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
         {
-            base.ProcessDisconnect(sender, e);
             var args = e as SocketArgs;
-            ThreadPool.RegisterWaitForSingleObject(args.Connection.Lock.WaitHandle, m_DisconnectWaitCallback, args.Connection, 3000, true);
+            args.Connection.Lock.Release();
+            ThreadPool.RegisterWaitForSingleObject(args.Connection.Lock.WaitHandle, m_OnRecycleReady, args.Connection, 3000, true);
         }
 
         //this is where actually reuse socket take place, enqueue socket id to freeConnectionids
-        private void OnDisconnectComplete(object sender, bool success)
+        private void RecycleConnection(object sender, bool success)
         {
             var conn = sender as Connection;
             m_FreeConnectionIds.Enqueue(conn.ConnectionID);

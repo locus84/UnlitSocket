@@ -110,16 +110,5 @@ namespace UnlitSocket
             m_Logger?.Debug($"Disconnected from server");
             base.StopReceive(connection);
         }
-
-        protected override bool Disconnect(Connection conn)
-        {
-            if (!conn.TrySetDisconnected()) return false;
-            //on client, we always rebuild socket
-            conn.Socket.Dispose();
-            conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
-            //disconnect should also signal
-            conn.Lock.Release();
-            return true;
-        }
     }
 }

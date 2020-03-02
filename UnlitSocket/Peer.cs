@@ -176,30 +176,18 @@ namespace UnlitSocket
         #region DisconnectHandler
         protected virtual bool Disconnect(Connection conn)
         {
-            //failed to set disconnected, another thread already have done this
             if (!conn.TrySetDisconnected()) return false;
-
-            //now we have right to disconnect socket. as it'll be async
-            try
-            {
-                conn.Socket.Shutdown(SocketShutdown.Both);
-                if (!conn.Socket.DisconnectAsync(conn.DisconnectArg))
-                    ProcessDisconnect(conn.Socket, conn.DisconnectArg);
-            }
-            catch(Exception e)
-            {
-                //this is unexpected error, let's just rebuild socket
-                m_Logger?.Exception(e);
-                conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
-                conn.Lock.Release();
-            }
+            //on client, we always rebuild socket
+            conn.Socket.Dispose();
+            conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
+            //disconnect should also signal
+            conn.Lock.Release();
             return true;
         }
 
         internal virtual void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
         {
-            var args = e as SocketArgs;
-            args.Connection.Lock.Release();
+            //do nothing here
         }
         #endregion
     }
