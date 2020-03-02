@@ -100,7 +100,6 @@ namespace UnlitSocket
         public void Disconnect()
         {
             if (Status == ConnectionStatus.Disconnected) return;
-            m_Connection.Socket.Close();
             Disconnect(m_Connection);
             m_Connection.DisconnectEvent.Wait();
         }
@@ -110,6 +109,17 @@ namespace UnlitSocket
             Status = ConnectionStatus.Disconnected;
             m_Logger?.Debug($"Disconnected from server");
             base.StopReceive(connection);
+        }
+
+        protected override bool Disconnect(Connection conn)
+        {
+            if (!conn.TrySetDisconnected()) return false;
+            //on client, we always rebuild socket
+            conn.Socket.Dispose();
+            conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
+            //disconnect should also signal
+            conn.DisconnectEvent.Signal();
+            return true;
         }
     }
 }

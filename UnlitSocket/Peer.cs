@@ -175,7 +175,7 @@ namespace UnlitSocket
         #endregion
 
         #region DisconnectHandler
-        protected bool Disconnect(Connection conn)
+        protected virtual bool Disconnect(Connection conn)
         {
             //failed to set disconnected, another thread already have done this
             if (!conn.TrySetDisconnected()) return false;
@@ -186,13 +186,6 @@ namespace UnlitSocket
                 conn.Socket.Shutdown(SocketShutdown.Both);
                 if (!conn.Socket.DisconnectAsync(conn.DisconnectArg))
                     ProcessDisconnect(conn.Socket, conn.DisconnectArg);
-            }
-            catch(ObjectDisposedException)
-            {
-                //if socket is disposed, then it's hard disconnected socket by client. let's rebuild socket
-                m_Logger?.Debug("Rebuilt socket as it's disposed");
-                conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
-                conn.DisconnectEvent.Signal();
             }
             catch(Exception e)
             {
