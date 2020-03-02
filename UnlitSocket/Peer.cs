@@ -8,8 +8,10 @@ namespace UnlitSocket
 {
     public abstract class Peer
     {
-        public bool NoDelay { get; set; } = true;
-        public bool KeepAlive { get; set; } = true;
+        public bool NoDelay = true;
+        public int SendBufferSize = 512;
+        public int ReceiveBufferSize = 512;
+        public KeepAliveOption KeepAliveStatus = new KeepAliveOption(true, 30000, 5000);
 
         internal ConcurrentQueue<SocketArgs> m_SendArgsPool = new ConcurrentQueue<SocketArgs>();
         internal ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();
@@ -31,8 +33,9 @@ namespace UnlitSocket
 
         protected Connection CreateConnection(int connectionId)
         {
-            var newConn = new Connection(connectionId, this);
-            newConn.SocketArg.Completed += ProcessReceive;
+            var newConn = new Connection(connectionId);
+            newConn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
+            newConn.ReceiveArg.Completed += ProcessReceive;
             newConn.DisconnectArg.Completed += ProcessDisconnect;
             return newConn;
         }
@@ -81,7 +84,7 @@ namespace UnlitSocket
             
             if(e.SocketError != SocketError.Success)
             {
-                m_Logger?.Warning("Socket Error : " + e.SocketError);
+                m_Logger?.Warning("Send Error : " + e.SocketError);
                 Disconnect(sendArgs.Connection);
             }
 
@@ -97,11 +100,12 @@ namespace UnlitSocket
         {
             try
             {
-                bool isPending = connection.Socket.ReceiveAsync(connection.SocketArg);
-                if (!isPending) ProcessReceive(connection.Socket, connection.SocketArg);
+                bool isPending = connection.Socket.ReceiveAsync(connection.ReceiveArg);
+                if (!isPending) ProcessReceive(connection.Socket, connection.ReceiveArg);
             }
-            catch
+            catch(Exception e)
             {
+                m_Logger?.Exception(e);
                 StopReceive(connection);
             }
         }
@@ -111,14 +115,23 @@ namespace UnlitSocket
             var receiveArgs = e as SocketArgs;
             var connection = receiveArgs.Connection;
 
-            if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
+            if (e.SocketError == SocketError.Success)
             {
-                if (connection.TryReleaseMessage(out var message)) 
-                    m_MessageHandler.OnDataReceived(connection.ConnectionID, message);
-                StartReceive(connection);
+                if(e.BytesTransferred > 0)
+                {
+                    if (connection.TryReleaseMessage(out var message))
+                        m_MessageHandler.OnDataReceived(connection.ConnectionID, message);
+                    StartReceive(connection);
+                }
+                else
+                {
+                    //safe disconnect as byte is zero
+                    StopReceive(connection);
+                }
             }
             else
             {
+                m_Logger?.Warning("Receive Error : " + e.SocketError);
                 StopReceive(connection);
             }
         }
@@ -164,40 +177,31 @@ namespace UnlitSocket
         #region DisconnectHandler
         protected bool Disconnect(Connection conn)
         {
-            //quick exit
-            if (!conn.IsConnected) return false;
-            bool disconnectSuccess = false;
-            lock (conn) //try to minimize lock
+            //failed to set disconnected, another thread already have done this
+            if (!conn.TrySetDisconnected()) return false;
+
+            //now we have right to disconnect socket. as it'll be async
+            try
             {
-                if (conn.IsConnected)
-                {
-                    disconnectSuccess = true;
-                    conn.IsConnected = false;
-                }
+                conn.Socket.Shutdown(SocketShutdown.Both);
+                if (!conn.Socket.DisconnectAsync(conn.DisconnectArg))
+                    ProcessDisconnect(conn.Socket, conn.DisconnectArg);
             }
-            if (disconnectSuccess)
+            catch(ObjectDisposedException)
             {
-                conn.DisconnectEvent.AddCount();
-                try
-                {
-                    conn.Socket.Shutdown(SocketShutdown.Both);
-                    if (!conn.Socket.DisconnectAsync(conn.DisconnectArg))
-                        ProcessDisconnect(conn.Socket, conn.DisconnectArg);
-                }
-                catch(Exception e)
-                {
-                    //if socket is disposed, then it's hard disconnected socket by client. let's rebuild socket
-                    if (e is ObjectDisposedException)
-                    {
-                        conn.RebuildSocket();
-                        Console.WriteLine("Rebuilt");
-                    }
-                    
-                    conn.DisconnectEvent.Signal();
-                }
-                return true;
+                //if socket is disposed, then it's hard disconnected socket by client. let's rebuild socket
+                m_Logger?.Debug("Rebuilt socket as it's disposed");
+                conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
+                conn.DisconnectEvent.Signal();
             }
-            return false;
+            catch(Exception e)
+            {
+                //this is unexpected error, let's just rebuild socket
+                m_Logger?.Exception(e);
+                conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
+                conn.DisconnectEvent.Signal();
+            }
+            return true;
         }
 
         internal virtual void ProcessDisconnect(object sender, SocketAsyncEventArgs e)

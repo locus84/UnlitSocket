@@ -3,6 +3,8 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Net;
 using System.Collections.Concurrent;
+using System.Linq;
+using System;
 
 namespace UnlitSocket
 {
@@ -38,11 +40,8 @@ namespace UnlitSocket
             Port = port;
             // create the socket which listens for incoming connections
             m_ListenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
-            m_ListenSocket.NoDelay = true;
-            m_ListenSocket.Blocking = false;
-            m_ListenSocket.SendBufferSize = 512;
-            m_ListenSocket.ReceiveBufferSize = 512;
-            m_ListenSocket.SendTimeout = 5000;
+            m_ListenSocket.SendBufferSize = SendBufferSize;
+            m_ListenSocket.ReceiveBufferSize = ReceiveBufferSize;
             m_ListenSocket.DualMode = true;
             m_ListenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, Port));
             m_ListenSocket.Listen(100);
@@ -52,6 +51,7 @@ namespace UnlitSocket
 
             m_RunningResetEvent.Reset();
             IsRunning = true;
+
             StartAccept(m_ListenSocket, acceptEventArg);
         }
 
@@ -70,10 +70,15 @@ namespace UnlitSocket
                 //socket could be already disposed
                 Disconnect(conn);
             }
+
+            if(!WaitHandle.WaitAll(m_ConnectionList.Select(conn => conn.DisconnectEvent.WaitHandle).ToArray(), 5000))
+            {
+                m_Logger?.Warning("Waiting All client Disconnect failed");
+            }
         }
 
         // Begins an operation to accept a connection request from the client 
-        private void StartAccept(Socket socket, SocketAsyncEventArgs args)
+        private void StartAccept(Socket listenSocket, SocketAsyncEventArgs args)
         {
             Connection conn;
 
@@ -88,33 +93,45 @@ namespace UnlitSocket
             }
 
             args.UserToken = conn;
-            args.AcceptSocket = conn.Socket; 
-            if (!socket.AcceptAsync(args)) ProcessAccept(socket, args);
+            args.AcceptSocket = conn.Socket;
+
+            try
+            {
+                if (!listenSocket.AcceptAsync(args))
+                    ProcessAccept(listenSocket, args);
+            }
+            catch(Exception e)
+            {
+                //unexpected exception, let's stop
+                m_Logger?.Exception(e);
+                m_FreeConnectionIds.Enqueue(conn.ConnectionID);
+                //we can set false before setting event
+                IsRunning = false; 
+                m_RunningResetEvent.Set();
+            }
         }
 
         private void ProcessAccept(object sender, SocketAsyncEventArgs args)
         {
             var conn = (Connection)args.UserToken;
+            var listenSocket = sender as Socket;
 
             if (args.SocketError == SocketError.Success)
             {
-                var socket = sender as Socket;
                 var currentNumber = Interlocked.Increment(ref m_CurrentConnectionCount);
                 //send initial message that indicates socket is accepted
 
-                conn.DisconnectEvent.Reset(1);
-                conn.IsConnected = true;
+                conn.SetConnectedAndResetEvent();
 
                 m_Logger?.Debug($"Client {conn.ConnectionID} connected, Current Count : {currentNumber}");
                 m_MessageHandler.OnConnected(conn.ConnectionID);
 
                 StartReceive(conn);
-                StartAccept(socket, args);
+                StartAccept(listenSocket, args);
             }
             else
             {
                 m_FreeConnectionIds.Enqueue(conn.ConnectionID);
-                var listenSocket = (Socket)sender;
 
                 //check if valid listen socket
                 if (IsRunning)
@@ -198,6 +215,7 @@ namespace UnlitSocket
             ThreadPool.RegisterWaitForSingleObject(args.Connection.DisconnectEvent.WaitHandle, m_DisconnectWaitCallback, args.Connection, 3000, true);
         }
 
+        //this is where actually reuse socket take place, enqueue socket id to freeConnectionids
         private void OnDisconnectComplete(object sender, bool success)
         {
             var conn = sender as Connection;

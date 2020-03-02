@@ -1,5 +1,7 @@
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
+using System.Net.Sockets;
 using System.Threading;
 
 namespace UnlitSocket.Tests
@@ -63,9 +65,7 @@ namespace UnlitSocket.Tests
         {
             Client client = new Client();
             client.SetLogger(new TestLogger());
-            client.Connect("127.0.0.1", Port);
-
-            while (client.Status != ConnectionStatus.Connected) Thread.Sleep(10);
+            client.Connect("127.0.0.1", Port).Wait();
 
             for(int i = 0; i < 10; i++)
             {
@@ -83,10 +83,10 @@ namespace UnlitSocket.Tests
             for(int i = 0; i < 5; i++)
             {
                 var msg = Message.Pop();
-                var guid = System.Guid.NewGuid();
+                var guid = Guid.NewGuid();
                 msg.WriteGuid(guid);
                 msg.Position = 0;
-                System.Console.WriteLine(guid);
+                Console.WriteLine(guid);
                 Assert.IsTrue(guid == msg.ReadGuid());
             }
         }
@@ -122,6 +122,36 @@ namespace UnlitSocket.Tests
         {
             var e = new CountdownEvent(0);
             e.Wait();
+        }
+
+        [Test]
+        public void TryAcceptAsyncWithClosedSocket()
+        {
+            var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+            socket.DualMode = true;
+            socket.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.IPv6Any, 9998));
+            socket.Listen(100);
+
+            var resetEvent = new AutoResetEvent(false);
+            var socketArg = new SocketAsyncEventArgs();
+            socketArg.Completed += (sender, args) => resetEvent.Set();
+            socket.AcceptAsync(socketArg);
+            var client = new Client();
+            client.Connect("localhost", 9998);
+            resetEvent.WaitOne();
+            Assert.IsTrue(socketArg.SocketError == SocketError.Success);
+            socketArg.AcceptSocket = null;
+            resetEvent.Reset();
+            socket.Close();
+            try
+            {
+                socket.AcceptAsync(socketArg);
+                Assert.Fail("Exception should be occurred");
+            }
+            catch(Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
         }
     }
 }

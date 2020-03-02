@@ -5,9 +5,6 @@ using System.Runtime.InteropServices;
 
 namespace UnlitSocket
 {
-    public delegate void ConnectionStatusChangeDelegate(int connectionID);
-    public delegate void DataReceivedDelegate(int connectionID, Message message);
-
     public enum ConnectionStatus { Disconnected, Connecting, Connected }
     public enum MessageType { Connected, Disconnected, Data }
 
@@ -23,6 +20,19 @@ namespace UnlitSocket
         void Debug(string msg);
         void Warning(string msg);
         void Exception(Exception exception);
+    }
+
+    public struct KeepAliveOption
+    {
+        public bool Enabled;
+        public int Time;
+        public int Interval;
+        public KeepAliveOption(bool enabled, int time, int interval)
+        {
+            Enabled = enabled;
+            Time = time;
+            Interval = interval;
+        }
     }
 
     public struct ReceivedMessage

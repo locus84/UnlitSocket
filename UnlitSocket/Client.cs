@@ -2,13 +2,12 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace UnlitSocket
 {
     public class Client : Peer
     {
-        public int ClientID => m_Connection.ConnectionID;
-
         public IPEndPoint RemoteEndPoint { get; private set; }
         public ConnectionStatus Status { get; private set; } = ConnectionStatus.Disconnected;
 
@@ -16,30 +15,32 @@ namespace UnlitSocket
 
         public Client() => m_Connection = CreateConnection(0);
 
-        public void Connect(string host, int port, float timeOutSec = 5f)
+        public Task Connect(string host, int port, float timeOutSec = 5f)
         {
             if (host == "localhost") host = "127.0.0.1";
-            Connect(new IPEndPoint(IPAddress.Parse(host), port), timeOutSec);
+            return Connect(new IPEndPoint(IPAddress.Parse(host), port), timeOutSec);
         }
 
-        public void Connect(IPEndPoint remoteEndPoint, float timeOutSec = 5f)
+        public Task Connect(IPEndPoint remoteEndPoint, float timeOutSec = 5f)
         {
-            if (Status != ConnectionStatus.Disconnected) return;
+            if (Status != ConnectionStatus.Disconnected) return Task.CompletedTask;
 
             RemoteEndPoint = remoteEndPoint;
 
             try
             {
-                m_Connection.DisconnectEvent.Reset(1);
-
+                m_Connection.SetConnectedAndResetEvent();
                 var asyncResult = m_Connection.Socket.BeginConnect(RemoteEndPoint, null, null);
-                var connectThread = new Thread(() => ConnectInternal(timeOutSec, asyncResult));
-
                 Status = ConnectionStatus.Connecting;
-                connectThread.Start();
+                var connectTask = new Task(() => ConnectInternal(timeOutSec, asyncResult));
+                connectTask.Start();
+                return connectTask;
             }
             catch
             {
+                Disconnect(m_Connection);
+                Status = ConnectionStatus.Disconnected;
+                //receive has not been started, so we signal manually
                 m_Connection.DisconnectEvent.Signal();
                 throw;
             }
@@ -49,20 +50,15 @@ namespace UnlitSocket
         {
             try
             {
-                //socket is built, let's assume it's connected
-                //so that disconnect(connection) can handle this
-                m_Connection.IsConnected = true;
-
                 //wait for connecting
                 if (!connectAr.AsyncWaitHandle.WaitOne((int)(timeOut * 1000), true)) throw new SocketException(10060);
                 m_Connection.Socket.EndConnect(connectAr);
 
                 //now it's connected
                 Status = ConnectionStatus.Connected;
-                
                 m_Logger?.Debug($"Connected to server");
 
-                m_MessageHandler.OnConnected(ClientID);
+                m_MessageHandler.OnConnected(m_Connection.ConnectionID);
                 StartReceive(m_Connection);
             }
             catch (Exception e)
@@ -71,8 +67,10 @@ namespace UnlitSocket
                 //just release signal, and handle socket destruction, no callback required
                 Disconnect(m_Connection);
                 Status = ConnectionStatus.Disconnected;
-                m_Logger?.Warning($"Connect Failed : {e.Message}");
+                m_Logger?.Warning($"Failed to connect to {RemoteEndPoint} : {e.Message}");
+                //receive has not been started, so we signal manually
                 m_Connection.DisconnectEvent.Signal();
+                throw e;
             }
         }
 
@@ -101,7 +99,6 @@ namespace UnlitSocket
         {
             if (Status == ConnectionStatus.Disconnected) return;
             m_Connection.Socket.Close();
-            Console.WriteLine("Close");
             Disconnect(m_Connection);
             m_Connection.DisconnectEvent.Wait();
         }
