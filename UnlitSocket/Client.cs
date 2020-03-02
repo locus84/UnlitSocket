@@ -43,7 +43,7 @@ namespace UnlitSocket
                 Disconnect(m_Connection);
                 Status = ConnectionStatus.Disconnected;
                 //receive has not been started, so we signal manually
-                m_Connection.DisconnectEvent.Signal();
+                m_Connection.Lock.Release();
                 throw;
             }
         }
@@ -71,7 +71,7 @@ namespace UnlitSocket
                 Status = ConnectionStatus.Disconnected;
                 m_Logger?.Warning($"Failed to connect to {RemoteEndPoint} : {e.Message}");
                 //receive has not been started, so we signal manually
-                m_Connection.DisconnectEvent.Signal();
+                m_Connection.Lock.Release();
                 throw e;
             }
         }
@@ -101,7 +101,7 @@ namespace UnlitSocket
         {
             if (Status == ConnectionStatus.Disconnected) return;
             Disconnect(m_Connection);
-            m_Connection.DisconnectEvent.Wait();
+            m_Connection.Lock.Wait();
         }
 
         protected override void StopReceive(Connection connection)
@@ -118,7 +118,7 @@ namespace UnlitSocket
             conn.Socket.Dispose();
             conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
             //disconnect should also signal
-            conn.DisconnectEvent.Signal();
+            conn.Lock.Release();
             return true;
         }
     }

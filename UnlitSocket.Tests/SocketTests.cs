@@ -45,7 +45,7 @@ namespace UnlitSocket.Tests
         {
             Client client = new Client();
             client.SetLogger(new TestLogger());
-            client.Connect( "localhost", Port);
+            client.Connect("localhost", Port);
 
             // I should be able to disconnect right away
             // if connection was pending,  it should just cancel
@@ -67,7 +67,7 @@ namespace UnlitSocket.Tests
             client.SetLogger(new TestLogger());
             client.Connect("127.0.0.1", Port).Wait();
 
-            for(int i = 0; i < 10; i++)
+            for (int i = 0; i < 10; i++)
             {
                 var msg = Message.Pop();
                 msg.WriteBytes(new byte[ushort.MaxValue], 0, ushort.MaxValue);
@@ -80,7 +80,7 @@ namespace UnlitSocket.Tests
         [Test]
         public void GUIDConversionTest()
         {
-            for(int i = 0; i < 5; i++)
+            for (int i = 0; i < 5; i++)
             {
                 var msg = Message.Pop();
                 var guid = Guid.NewGuid();
@@ -118,13 +118,6 @@ namespace UnlitSocket.Tests
         }
 
         [Test]
-        public void CountEventTest()
-        {
-            var e = new CountdownEvent(0);
-            e.Wait();
-        }
-
-        [Test]
         public void TryAcceptAsyncWithClosedSocket()
         {
             var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
@@ -148,10 +141,28 @@ namespace UnlitSocket.Tests
                 socket.AcceptAsync(socketArg);
                 Assert.Fail("Exception should be occurred");
             }
-            catch(Exception e)
+            catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }
+        }
+
+        [Test]
+        public void TestCountEventTest()
+        {
+            var e = new CountdownEvent(0);
+            e.Reset(2);
+            e.AddCount(1);
+            e.AddCount(1);
+        }
+
+        [Test]
+        public void TestCountLock()
+        {
+            var countLock = new CountLock();
+            countLock.Reset(2);
+            Assert.IsTrue(countLock.TryRetain(2));
+            Assert.IsFalse(countLock.TryRetain(2));
         }
     }
 }

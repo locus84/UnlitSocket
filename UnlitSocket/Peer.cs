@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
-using System.Threading;
 
 namespace UnlitSocket
 {
@@ -59,7 +58,7 @@ namespace UnlitSocket
             args.Connection = conn;
             message.BindToArgsSend(args);
 
-            conn.DisconnectEvent.AddCount();
+            conn.Lock.Retain();
 
             try
             {
@@ -71,7 +70,7 @@ namespace UnlitSocket
                 m_Logger?.Exception(e);
                 args.ClearMessage();
                 Disconnect(args.Connection);
-                args.Connection.DisconnectEvent.Signal();
+                args.Connection.Lock.Release();
                 args.Connection = null;
                 m_SendArgsPool.Enqueue(args);
             }
@@ -89,7 +88,7 @@ namespace UnlitSocket
             }
 
             sendArgs.ClearMessage();
-            sendArgs.Connection.DisconnectEvent.Signal();
+            sendArgs.Connection.Lock.Release();
             sendArgs.Connection = null;
             m_SendArgsPool.Enqueue(sendArgs);
         }
@@ -143,7 +142,7 @@ namespace UnlitSocket
             Disconnect(conn);
             //connected false can be called anywhere, but disconnect event should be called once
             m_MessageHandler.OnDisconnected(conn.ConnectionID);
-            conn.DisconnectEvent.Signal();
+            conn.Lock.Release();
         }
         #endregion
 
@@ -192,7 +191,7 @@ namespace UnlitSocket
                 //this is unexpected error, let's just rebuild socket
                 m_Logger?.Exception(e);
                 conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
-                conn.DisconnectEvent.Signal();
+                conn.Lock.Release();
             }
             return true;
         }
@@ -200,7 +199,7 @@ namespace UnlitSocket
         internal virtual void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
         {
             var args = e as SocketArgs;
-            args.Connection.DisconnectEvent.Signal();
+            args.Connection.Lock.Release();
         }
         #endregion
     }

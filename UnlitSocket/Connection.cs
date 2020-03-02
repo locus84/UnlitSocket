@@ -12,7 +12,7 @@ namespace UnlitSocket
         internal Socket Socket { get; set; }
         internal SocketArgs ReceiveArg { get; private set; }
         internal SocketArgs DisconnectArg { get; private set; }
-        internal CountdownEvent DisconnectEvent = new CountdownEvent(0);
+        internal CountLock Lock = new CountLock();
 
         internal bool IsConnected { get => m_ConnectedInt > 0;  }
         int m_ConnectedInt = 0;
@@ -39,7 +39,7 @@ namespace UnlitSocket
             //we start with two count
             //1. receive thread,
             //2. disconnect thread 
-            DisconnectEvent.Reset(2);
+            Lock.Reset(2);
         }
 
         internal bool TrySetDisconnected()

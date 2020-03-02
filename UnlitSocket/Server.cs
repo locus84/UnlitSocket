@@ -71,7 +71,7 @@ namespace UnlitSocket
                 Disconnect(conn);
             }
 
-            if(!WaitHandle.WaitAll(m_ConnectionList.Select(conn => conn.DisconnectEvent.WaitHandle).ToArray(), 5000))
+            if(!WaitHandle.WaitAll(m_ConnectionList.Select(conn => conn.Lock.WaitHandle).ToArray(), 5000))
             {
                 m_Logger?.Warning("Waiting All client Disconnect failed");
             }
@@ -212,7 +212,7 @@ namespace UnlitSocket
         {
             base.ProcessDisconnect(sender, e);
             var args = e as SocketArgs;
-            ThreadPool.RegisterWaitForSingleObject(args.Connection.DisconnectEvent.WaitHandle, m_DisconnectWaitCallback, args.Connection, 3000, true);
+            ThreadPool.RegisterWaitForSingleObject(args.Connection.Lock.WaitHandle, m_DisconnectWaitCallback, args.Connection, 3000, true);
         }
 
         //this is where actually reuse socket take place, enqueue socket id to freeConnectionids

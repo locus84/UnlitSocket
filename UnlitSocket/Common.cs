@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace UnlitSocket
 {
@@ -148,6 +149,45 @@ namespace UnlitSocket
                 list.AddRange(m_InnerQueue);
                 m_InnerQueue.Clear();
             }
+        }
+    }
+
+    internal class CountLock
+    {
+        ManualResetEventSlim m_Event = new ManualResetEventSlim(true);
+        public WaitHandle WaitHandle => m_Event.WaitHandle;
+
+        int m_Count = 0;
+
+        public void Reset(int count)
+        {
+            m_Count = count;
+            if (m_Count == 0) m_Event.Set();
+            else m_Event.Reset();
+        }
+
+        public int Retain()
+        {
+            return Interlocked.Increment(ref m_Count);
+        }
+
+        public bool TryRetain(int expectedCount)
+        {
+            return Interlocked.CompareExchange(ref m_Count, expectedCount + 1, expectedCount) == expectedCount;
+        }
+
+        public int Release()
+        {
+            var result = Interlocked.Decrement(ref m_Count);
+            if (result > 0) return result;
+            if (result < 0) throw new InvalidOperationException("Can't release below one");
+            m_Event.Set();
+            return result;
+        }
+
+        public void Wait()
+        {
+            m_Event.Wait();
         }
     }
 }
