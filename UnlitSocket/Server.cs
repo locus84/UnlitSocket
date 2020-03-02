@@ -60,7 +60,7 @@ namespace UnlitSocket
             if (!IsRunning) return;
 
             IsRunning = false;
-            m_ListenSocket.Close();
+            m_ListenSocket.Dispose();
             m_ListenSocket = null;
             m_RunningResetEvent.WaitOne();
 
@@ -70,11 +70,7 @@ namespace UnlitSocket
                 //socket could be already disposed
                 Disconnect(conn);
             }
-
-            if(!WaitHandle.WaitAll(m_ConnectionList.Select(conn => conn.Lock.WaitHandle).ToArray(), 5000))
-            {
-                m_Logger?.Warning("Waiting All client Disconnect failed");
-            }
+            //don't wait others to disconnect
         }
 
         // Begins an operation to accept a connection request from the client 
@@ -122,7 +118,6 @@ namespace UnlitSocket
                 //send initial message that indicates socket is accepted
 
                 conn.SetConnectedAndResetEvent();
-
                 m_Logger?.Debug($"Client {conn.ConnectionID} connected, Current Count : {currentNumber}");
                 m_MessageHandler.OnConnected(conn.ConnectionID);
 
