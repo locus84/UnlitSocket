@@ -28,8 +28,8 @@ namespace UnlitSocket.Tests
         [Test]
         public void MaxMessageSizeTest()
         {
-            var message = Message.Pop();
-            message.WriteBytes(new byte[ushort.MaxValue], 0, ushort.MaxValue);
+            var msg = Message.Pop();
+            msg.WriteBytes(new byte[ushort.MaxValue], 0, ushort.MaxValue);
         }
 
         [Test]
@@ -69,9 +69,9 @@ namespace UnlitSocket.Tests
 
             for(int i = 0; i < 10; i++)
             {
-                var message = Message.Pop();
-                message.WriteBytes(new byte[ushort.MaxValue], 0, ushort.MaxValue);
-                client.Send(message);
+                var msg = Message.Pop();
+                msg.WriteBytes(new byte[ushort.MaxValue], 0, ushort.MaxValue);
+                client.Send(msg);
             }
 
             server.Disconnect(1);
@@ -129,7 +129,7 @@ namespace UnlitSocket.Tests
         {
             var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
             socket.DualMode = true;
-            socket.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.IPv6Any, 9998));
+            socket.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.IPv6Any, Port + 1));
             socket.Listen(100);
 
             var resetEvent = new AutoResetEvent(false);
@@ -137,7 +137,7 @@ namespace UnlitSocket.Tests
             socketArg.Completed += (sender, args) => resetEvent.Set();
             socket.AcceptAsync(socketArg);
             var client = new Client();
-            client.Connect("localhost", 9998);
+            client.Connect("localhost", Port + 1);
             resetEvent.WaitOne();
             Assert.IsTrue(socketArg.SocketError == SocketError.Success);
             socketArg.AcceptSocket = null;

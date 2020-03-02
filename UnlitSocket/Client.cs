@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace UnlitSocket
@@ -32,7 +31,10 @@ namespace UnlitSocket
                 m_Connection.SetConnectedAndResetEvent();
                 var asyncResult = m_Connection.Socket.BeginConnect(RemoteEndPoint, null, null);
                 Status = ConnectionStatus.Connecting;
-                var connectTask = new Task(() => ConnectInternal(timeOutSec, asyncResult));
+
+                //socket can be swapped if we disconnect immediately
+                var socket = m_Connection.Socket;
+                var connectTask = new Task(() => ConnectInternal(socket, timeOutSec, asyncResult));
                 connectTask.Start();
                 return connectTask;
             }
@@ -46,13 +48,13 @@ namespace UnlitSocket
             }
         }
 
-        private void ConnectInternal(float timeOut, IAsyncResult connectAr)
+        private void ConnectInternal(Socket socket, float timeOut, IAsyncResult connectAr)
         {
             try
             {
                 //wait for connecting
                 if (!connectAr.AsyncWaitHandle.WaitOne((int)(timeOut * 1000), true)) throw new SocketException(10060);
-                m_Connection.Socket.EndConnect(connectAr);
+                socket.EndConnect(connectAr);
 
                 //now it's connected
                 Status = ConnectionStatus.Connected;
