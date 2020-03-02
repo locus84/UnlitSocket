@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace Mirror
@@ -23,11 +24,8 @@ namespace Mirror
         protected UnlitSocket.Server server = new UnlitSocket.Server();
         protected UnlitSocketLogger logger = new UnlitSocketLogger();
 
-        Coroutine m_ConnectCoroutine = null;
-
         List<UnlitSocket.ReceivedMessage> m_ClientMessageCache = new List<UnlitSocket.ReceivedMessage>();
         List<UnlitSocket.ReceivedMessage> m_ServerMessageCache = new List<UnlitSocket.ReceivedMessage>();
-
 
         byte[] receiveBuffer = new byte[1024];
 
@@ -81,29 +79,21 @@ namespace Mirror
         public override bool ClientConnected() => client.Status == UnlitSocket.ConnectionStatus.Connected;
         public override void ClientConnect(string address)
         {
-            client.Connect(address, port);
-            if (m_ConnectCoroutine != null) StopCoroutine(m_ConnectCoroutine);
-            m_ConnectCoroutine = StartCoroutine(WaitForConnect());
+            StartCoroutine(WaitForConnect(client.Connect(address, port)));
         }
         public override void ClientConnect(Uri uri)
         {
             if (uri.Scheme != Scheme)
                 throw new ArgumentException($"Invalid url {uri}, use {Scheme}://host:port instead", nameof(uri));
-
             int serverPort = uri.IsDefaultPort ? port : uri.Port;
-            client.Connect(uri.Host, serverPort);
-            if (m_ConnectCoroutine != null) StopCoroutine(m_ConnectCoroutine);
-            m_ConnectCoroutine = StartCoroutine(WaitForConnect());
+            StartCoroutine(WaitForConnect(client.Connect(uri.Host, serverPort)));
         }
 
-        IEnumerator WaitForConnect()
+        IEnumerator WaitForConnect(Task task)
         {
-            while (client.Status == UnlitSocket.ConnectionStatus.Connecting)
-                yield return null;
-            if (client.Status == UnlitSocket.ConnectionStatus.Disconnected)
-                OnClientDisconnected.Invoke();
+            while (!task.IsCompleted) yield return null;
+            if(task.IsFaulted) OnClientDisconnected.Invoke();
         }
-
 
         public override bool ClientSend(int channelId, ArraySegment<byte> segment)
         {
@@ -145,9 +135,8 @@ namespace Mirror
             m_ClientMessageCache.RemoveRange(0, processCount);
         }
 
-        public override void ClientDisconnect()
+        public override void ClientDisconnect() 
         {
-            if (m_ConnectCoroutine != null) StopCoroutine(m_ConnectCoroutine);
             client.Disconnect();
         }
 
@@ -214,7 +203,7 @@ namespace Mirror
             try
             {
                 var ep = server.GetConnectionAddress(connectionId);
-                return ep == null ? "unknown" : ep.ToString();
+                return ep == null? "unknown" : ep.ToString();
             }
             catch (SocketException)
             {
@@ -227,8 +216,8 @@ namespace Mirror
         public override void Shutdown()
         {
             Debug.Log("UnlitSocketTransport Shutdown()");
-            if (client.Status != UnlitSocket.ConnectionStatus.Disconnected) client.Disconnect();
-            if (server.IsRunning) server.Stop();
+            if(client.Status != UnlitSocket.ConnectionStatus.Disconnected) client.Disconnect();
+            if(server.IsRunning) server.Stop();
         }
 
         public override int GetMaxPacketSize(int channelId)
