@@ -205,30 +205,32 @@ namespace UnlitSocket
 
         protected override bool Disconnect(Connection conn)
         {
+            //failed to set disconnected, another thread already have done this
             if (!conn.TrySetDisconnected()) return false;
 
             //now we have right to disconnect socket. as it'll be async
             try
             {
-                if (conn.Socket.Connected)
-                {
-                    conn.Socket.Shutdown(SocketShutdown.Both);
-                    conn.Socket.Disconnect(true);
-                }
+                if (conn.IsConnected) conn.Socket.Shutdown(SocketShutdown.Both);
+                if (!conn.Socket.DisconnectAsync(conn.DisconnectArg))
+                    ProcessDisconnect(conn.Socket, conn.DisconnectArg);
             }
-            catch { }
-
-            //if released all already
-            if(conn.Lock.Release() == 0)
+            catch (Exception e)
             {
-                m_OnRecycleReady(conn, true);
-            }
-            else
-            {
-                //wait for others
+                //this is unexpected error, let's just rebuild socket
+                m_Logger?.Exception(e);
+                conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
+                conn.Lock.Release();
                 ThreadPool.RegisterWaitForSingleObject(conn.Lock.WaitHandle, m_OnRecycleReady, conn, 3000, true);
             }
             return true;
+        }
+
+        internal override void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
+        {
+            var args = e as SocketArgs;
+            args.Connection.Lock.Release();
+            ThreadPool.RegisterWaitForSingleObject(args.Connection.Lock.WaitHandle, m_OnRecycleReady, args.Connection, 3000, true);
         }
 
         //this is where actually reuse socket take place, enqueue socket id to freeConnectionids

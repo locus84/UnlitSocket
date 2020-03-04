@@ -11,6 +11,7 @@ namespace UnlitSocket
 
         internal Socket Socket { get; set; }
         internal SocketArgs ReceiveArg { get; private set; }
+        internal SocketArgs DisconnectArg { get; private set; }
         internal CountLock Lock = new CountLock();
 
         internal bool IsConnected { get => m_ConnectedInt > 0;  }
@@ -26,6 +27,9 @@ namespace UnlitSocket
             ReceiveArg = new SocketArgs();
             ReceiveArg.BufferList = new List<ArraySegment<byte>>();
             ReceiveArg.Connection = this;
+            DisconnectArg = new SocketArgs();
+            DisconnectArg.Connection = this;
+            DisconnectArg.DisconnectReuseSocket = true;
             PrepareReceiveLength();
         }
 
