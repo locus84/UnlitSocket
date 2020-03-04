@@ -108,6 +108,7 @@ namespace UnlitSocket.Tests
                 clientList.Add(client);
             }
 
+            Thread.Sleep(100);
             Assert.IsTrue(Server.ConnectionCount == testCount);
 
             foreach (var client in clientList)
@@ -126,6 +127,7 @@ namespace UnlitSocket.Tests
                 clientList.Add(client);
             }
 
+            Thread.Sleep(100);
             Assert.IsTrue(Server.ConnectionCount == testCount);
 
             foreach (var client in clientList)
@@ -175,8 +177,10 @@ namespace UnlitSocket.Tests
             socket.Connect(Host, Port);
             socket.Shutdown(SocketShutdown.Both);
             var args = new SocketAsyncEventArgs();
-            args.SetBuffer(new byte[1], 0 ,1);
-            socket.ReceiveAsync(args);
+            args.SetBuffer(new byte[1], 0, 1);
+            var mEvent = new ManualResetEvent(false);
+            args.Completed += (sock, arg) => mEvent.Set(); 
+            if (socket.ReceiveAsync(args)) mEvent.WaitOne();
             Assert.IsTrue(args.SocketError == SocketError.Shutdown);
             socket.Close();
         }

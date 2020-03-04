@@ -209,6 +209,7 @@ namespace UnlitSocket
             if (!conn.TrySetDisconnected()) return false;
 
             //now we have right to disconnect socket. as it'll be async
+            //why async? as window based mono throws exception when disconnect(false) calls even it's connected
             try
             {
                 if (conn.IsConnected) conn.Socket.Shutdown(SocketShutdown.Both);
@@ -220,8 +221,14 @@ namespace UnlitSocket
                 //this is unexpected error, let's just rebuild socket
                 m_Logger?.Exception(e);
                 conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
-                conn.Lock.Release();
-                ThreadPool.RegisterWaitForSingleObject(conn.Lock.WaitHandle, m_OnRecycleReady, conn, 3000, true);
+                if(conn.Lock.Release() == 0)
+                {
+                    m_OnRecycleReady.Invoke(conn, false);
+                }
+                else
+                {
+                    ThreadPool.RegisterWaitForSingleObject(conn.Lock.WaitHandle, m_OnRecycleReady, conn, 3000, true);
+                }
             }
             return true;
         }
@@ -229,8 +236,15 @@ namespace UnlitSocket
         internal override void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
         {
             var args = e as SocketArgs;
-            args.Connection.Lock.Release();
-            ThreadPool.RegisterWaitForSingleObject(args.Connection.Lock.WaitHandle, m_OnRecycleReady, args.Connection, 3000, true);
+
+            if (args.Connection.Lock.Release() == 0)
+            {
+                m_OnRecycleReady.Invoke(args.Connection, false);
+            }
+            else
+            {
+                ThreadPool.RegisterWaitForSingleObject(args.Connection.Lock.WaitHandle, m_OnRecycleReady, args.Connection, 3000, true);
+            }
         }
 
         //this is where actually reuse socket take place, enqueue socket id to freeConnectionids
