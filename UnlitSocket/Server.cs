@@ -216,12 +216,7 @@ namespace UnlitSocket
                     conn.Socket.Disconnect(true);
                 }
             }
-            catch (Exception e)
-            {
-                //this is unexpected error, let's just rebuild socket
-                m_Logger?.Exception(e);
-                conn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
-            }
+            catch { }
 
             //if released all already
             if(conn.Lock.Release() == 0)
