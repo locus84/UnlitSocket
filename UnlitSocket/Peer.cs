@@ -34,7 +34,7 @@ namespace UnlitSocket
         {
             var newConn = new Connection(connectionId);
             newConn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
-            newConn.ReceiveArg.Completed += ProcessReceive;
+            newConn.ReceiveArg.SetOnComplete(ProcessReceive);
             return newConn;
         }
 
@@ -98,7 +98,7 @@ namespace UnlitSocket
         {
             try
             {
-                bool isPending = connection.Socket.ReceiveAsync(connection.ReceiveArg);
+                bool isPending = (connection.Socket as WindowSocket).ReceiveAsyncMonoWindows(connection.ReceiveArg);
                 if (!isPending) ProcessReceive(connection.Socket, connection.ReceiveArg);
             }
             catch(Exception e)
@@ -115,7 +115,7 @@ namespace UnlitSocket
 
             if (e.SocketError == SocketError.Success)
             {
-                if(e.BytesTransferred > 0)
+                if(receiveArgs.LastTransferred > 0)
                 {
                     if (connection.TryReleaseMessage(out var message))
                         m_MessageHandler.OnDataReceived(connection.ConnectionID, message);

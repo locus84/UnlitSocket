@@ -37,6 +37,7 @@ namespace UnlitSocket
         {
             if (IsRunning) return;
 
+            WindowSocket.Run();
             Port = port;
             // create the socket which listens for incoming connections
             m_ListenSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
@@ -58,7 +59,7 @@ namespace UnlitSocket
         public void Stop()
         {
             if (!IsRunning) return;
-
+            WindowSocket.Stop();
             IsRunning = false;
             m_ListenSocket.Dispose();
             m_ListenSocket = null;

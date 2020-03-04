@@ -106,6 +106,21 @@ namespace UnlitSocket
         public Message Message;
         public Connection Connection;
 
+        EventHandler<SocketAsyncEventArgs> m_CachedHandler;
+
+        public int LastTransferred = 0;
+
+        internal void InvokeComplete(Socket socket)
+        {
+            m_CachedHandler.Invoke(socket, this);
+        }
+
+        public void SetOnComplete(EventHandler<SocketAsyncEventArgs> onCompletedHandler)
+        {
+            m_CachedHandler = onCompletedHandler;
+            Completed += onCompletedHandler;
+        }
+
         public void ClearMessage()
         {
             if (Message != null)

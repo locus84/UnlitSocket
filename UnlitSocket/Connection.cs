@@ -81,7 +81,7 @@ namespace UnlitSocket
 
         internal bool HandleReceiveLength()
         {
-            m_BytesToReceive -= ReceiveArg.BytesTransferred;
+            m_BytesToReceive -= ReceiveArg.LastTransferred;
             if (m_BytesToReceive == 0)
             {
                 //now we have size howmuch we can receive, set it
@@ -103,7 +103,7 @@ namespace UnlitSocket
 
         private bool HandleReceiveMessage()
         {
-            m_BytesToReceive -= ReceiveArg.BytesTransferred;
+            m_BytesToReceive -= ReceiveArg.LastTransferred;
             //received properly
             if (m_BytesToReceive == 0) return true;
             var bytesReceived = ReceiveArg.Message.Size - m_BytesToReceive;
@@ -120,13 +120,14 @@ namespace UnlitSocket
         internal void BuildSocket(bool noDelay, KeepAliveOption keepAlive, int sendSize, int receiveSize)
         {
             //create new socket
-            Socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+            Socket = new WindowSocket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
 
             //default settings
             Socket.NoDelay = noDelay;
             Socket.SendBufferSize = sendSize;
             Socket.ReceiveBufferSize = receiveSize;
             Socket.DualMode = true;
+            Socket.Blocking = false;
 
             //linger for reuse socket
             Socket.LingerState = new LingerOption(true, 0);
