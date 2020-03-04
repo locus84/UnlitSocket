@@ -10,20 +10,20 @@ namespace UnlitSocket.Tests
     {
         const string Host = "localhost";
         const int Port = 9999;
-        Server server;
+        Server Server;
 
         [SetUp]
         public void Setup()
         {
-            server = new Server();
-            server.SetLogger(new TestLogger());
-            server.Start(Port);
+            Server = new Server();
+            Server.SetLogger(new TestLogger());
+            Server.Start(Port);
         }
 
         [TearDown]
         public void TearDown()
         {
-            server.Stop();
+            Server.Stop();
         }
 
         [Test]
@@ -37,6 +37,8 @@ namespace UnlitSocket.Tests
         public void ServerStartAndStop()
         {
             var server = new Server();
+            server.Start(Port + 1);
+            server.Stop();
             server.Start(Port + 1);
             server.Stop();
         }
@@ -75,7 +77,7 @@ namespace UnlitSocket.Tests
                 client.Send(msg);
             }
 
-            server.Disconnect(1);
+            Server.Disconnect(1);
         }
 
         [Test]
@@ -95,15 +97,18 @@ namespace UnlitSocket.Tests
         [Test]
         public void MultipleClientHangTest()
         {
-            var testCount = 30;
+            var testCount = 10;
             var clientList = new List<Client>();
 
             for (int i = 0; i < testCount; i++)
             {
                 var client = new Client();
-                client.Connect(Host, Port);
+                client.Connect(Host, Port).Wait();
+                Assert.IsTrue(client.Status == ConnectionStatus.Connected);
                 clientList.Add(client);
             }
+
+            Assert.IsTrue(Server.ConnectionCount == testCount);
 
             foreach (var client in clientList)
             {
@@ -111,11 +116,25 @@ namespace UnlitSocket.Tests
                 client.Disconnect();
             }
 
+            clientList.Clear();
+
             for (int i = 0; i < testCount; i++)
             {
                 var client = new Client();
-                client.Connect(Host, Port);
+                client.Connect(Host, Port).Wait();
+                Assert.IsTrue(client.Status == ConnectionStatus.Connected);
+                clientList.Add(client);
             }
+
+            Assert.IsTrue(Server.ConnectionCount == testCount);
+
+            foreach (var client in clientList)
+            {
+                Assert.IsTrue(client.Status != ConnectionStatus.Disconnected);
+                client.Disconnect();
+            }
+
+            clientList.Clear();
         }
 
         [Test]
@@ -148,6 +167,19 @@ namespace UnlitSocket.Tests
             }
         }
 
+        [Test]
+        public void TryAcceptAsyncWithShutdownSocket()
+        {
+            var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+            socket.DualMode = true;
+            socket.Connect(Host, Port);
+            socket.Shutdown(SocketShutdown.Both);
+            var args = new SocketAsyncEventArgs();
+            args.SetBuffer(new byte[1], 0 ,1);
+            socket.ReceiveAsync(args);
+            Assert.IsTrue(args.SocketError == SocketError.Shutdown);
+            socket.Close();
+        }
         [Test]
         public void TestCountEventTest()
         {

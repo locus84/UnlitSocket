@@ -35,7 +35,6 @@ namespace UnlitSocket
             var newConn = new Connection(connectionId);
             newConn.BuildSocket(NoDelay, KeepAliveStatus, SendBufferSize, ReceiveBufferSize);
             newConn.ReceiveArg.Completed += ProcessReceive;
-            newConn.DisconnectArg.Completed += ProcessDisconnect;
             return newConn;
         }
 
@@ -183,11 +182,6 @@ namespace UnlitSocket
             //disconnect should also signal
             conn.Lock.Release();
             return true;
-        }
-
-        internal virtual void ProcessDisconnect(object sender, SocketAsyncEventArgs e)
-        {
-            //do nothing here
         }
         #endregion
     }

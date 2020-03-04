@@ -72,7 +72,6 @@ namespace UnlitSocket
                 m_Logger?.Warning($"Failed to connect to {RemoteEndPoint} : {e.Message}");
                 //receive has not been started, so we signal manually
                 m_Connection.Lock.Release();
-                throw e;
             }
         }
 

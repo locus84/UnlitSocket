@@ -156,7 +156,7 @@ namespace UnlitSocket
     {
         ManualResetEventSlim m_Event = new ManualResetEventSlim(true);
         public WaitHandle WaitHandle => m_Event.WaitHandle;
-
+        public bool IsSet => m_Event.IsSet;
         int m_Count = 0;
 
         public void Reset(int count)

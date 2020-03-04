@@ -92,7 +92,7 @@ namespace Mirror
         IEnumerator WaitForConnect(Task task)
         {
             while (!task.IsCompleted) yield return null;
-            if(task.IsFaulted) OnClientDisconnected.Invoke();
+            if(client.Status == UnlitSocket.ConnectionStatus.Disconnected) OnClientDisconnected.Invoke();
         }
 
         public override bool ClientSend(int channelId, ArraySegment<byte> segment)

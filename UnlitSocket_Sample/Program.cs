@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using UnlitSocket;
@@ -8,6 +9,7 @@ namespace UnlitSocket_Sample
     class Program
     {
         static Server server;
+        static List<Client> clients = new List<Client>();
 
         static IPEndPoint ep = new IPEndPoint(IPAddress.Loopback, 6000);
 
@@ -46,6 +48,8 @@ namespace UnlitSocket_Sample
                 }
                 if (command == "reconnect client")
                     new Thread(new ThreadStart(StartClient)).Start();
+                if (command == "disconnect all")
+                    StopClient();
                 if (command == "stop server")
                     server?.Stop();
                 if (command == "more client")
@@ -59,6 +63,7 @@ namespace UnlitSocket_Sample
             {
                 var newClient = new Client();
                 newClient.Connect(ep);
+                clients.Add(newClient);
             }
         }
 
@@ -74,6 +79,16 @@ namespace UnlitSocket_Sample
                     Thread.Sleep(100);
                 client.Disconnect();
             }
+        }
+
+        static void StopClient()
+        {
+            Console.WriteLine("StopClient");
+            for(int i = 0; i < clients.Count; i++)
+            {
+                clients[i].Disconnect();
+            }
+            clients.Clear();
         }
 
 
