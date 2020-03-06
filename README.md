@@ -5,7 +5,7 @@ Very Straightforward TCP network framework using SocketAsyncEventArgs.
 
 1. Message based(max length is ushort.MaxValue).
 2. Reuse sockets on Server. No allocation at all.(except collection resizing at first)
-3. Connection count is up to your machine.(does not cache SocketAsyncEventArgs)
+3. Connection count is up to your machine.(does not pre-allocate SocketAsyncEventArgs)
 4. Message buffers are devided into multiple buffers and cached. You can recycle with ease.
 5. Mirror transport support.(https://github.com/vis2k/Mirror)
 6. Receiving/sending messages are ThreadSafe.
