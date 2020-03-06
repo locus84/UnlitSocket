@@ -12,7 +12,7 @@ Very Straightforward TCP network framework using SocketAsyncEventArgs.
    
 </br>
 
-Useage Examples
+Usage Examples
 ===
 
 #### NameSpace
