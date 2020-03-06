@@ -24,8 +24,7 @@ namespace Mirror
         protected UnlitSocket.Server server = new UnlitSocket.Server();
         protected UnlitSocketLogger logger = new UnlitSocketLogger();
 
-        List<UnlitSocket.ReceivedMessage> m_ClientMessageCache = new List<UnlitSocket.ReceivedMessage>();
-        List<UnlitSocket.ReceivedMessage> m_ServerMessageCache = new List<UnlitSocket.ReceivedMessage>();
+        List<UnlitSocket.Event> m_EventCache = new List<UnlitSocket.Event>();
 
         byte[] receiveBuffer = new byte[1024];
 
@@ -92,7 +91,7 @@ namespace Mirror
         IEnumerator WaitForConnect(Task task)
         {
             while (!task.IsCompleted) yield return null;
-            if(client.Status == UnlitSocket.ConnectionStatus.Disconnected) OnClientDisconnected.Invoke();
+            if(task.IsFaulted) OnClientDisconnected.Invoke();
         }
 
         public override bool ClientSend(int channelId, ArraySegment<byte> segment)
@@ -102,27 +101,27 @@ namespace Mirror
             return client.Send(msg);
         }
 
-        void ProcessClientMessages()
+        void HandleClientEvents()
         {
-            client.GetNextMessages(m_ClientMessageCache);
+            client.GetNextEvents(m_EventCache);
             int processCount = 0;
 
-            for (int i = 0; i < m_ClientMessageCache.Count; i++)
+            for (int i = 0; i < m_EventCache.Count; i++)
             {
-                var receivedMsg = m_ClientMessageCache[i];
-                switch (receivedMsg.Type)
+                var ev = m_EventCache[i];
+                switch (ev.Type)
                 {
-                    case UnlitSocket.MessageType.Connected:
+                    case UnlitSocket.EventType.Connected:
                         OnClientConnected.Invoke();
                         break;
-                    case UnlitSocket.MessageType.Data:
-                        var msg = receivedMsg.MessageData;
+                    case UnlitSocket.EventType.Data:
+                        var msg = ev.Message;
                         EnsureBufferSize(msg.Size);
                         msg.ReadBytes(receiveBuffer, 0, msg.Size);
                         OnClientDataReceived.Invoke(new ArraySegment<byte>(receiveBuffer, 0, msg.Size), Channels.DefaultReliable);
                         msg.Release();
                         break;
-                    case UnlitSocket.MessageType.Disconnected:
+                    case UnlitSocket.EventType.Disconnected:
                         OnClientDisconnected.Invoke();
                         break;
                 }
@@ -132,7 +131,7 @@ namespace Mirror
                 if (!enabled) break;
             }
 
-            m_ClientMessageCache.RemoveRange(0, processCount);
+            m_EventCache.RemoveRange(0, processCount);
         }
 
         public override void ClientDisconnect() 
@@ -142,8 +141,8 @@ namespace Mirror
 
         public void LateUpdate()
         {
-            ProcessClientMessages();
-            ProcessServerMessage();
+            HandleClientEvents();
+            HandleServerEvents();
         }
 
         public override Uri ServerUri()
@@ -165,28 +164,28 @@ namespace Mirror
             return server.Send(connectionIds, msg);
         }
 
-        void ProcessServerMessage()
+        void HandleServerEvents()
         {
-            server.GetNextMessages(m_ServerMessageCache);
+            server.GetNextEvents(m_EventCache);
             int processCount = 0;
 
-            for (int i = 0; i < m_ServerMessageCache.Count; i++)
+            for (int i = 0; i < m_EventCache.Count; i++)
             {
-                var receivedMsg = m_ServerMessageCache[i];
-                switch (receivedMsg.Type)
+                var ev = m_EventCache[i];
+                switch (ev.Type)
                 {
-                    case UnlitSocket.MessageType.Connected:
-                        OnServerConnected.Invoke(receivedMsg.ConnectionId);
+                    case UnlitSocket.EventType.Connected:
+                        OnServerConnected.Invoke(ev.ConnectionId);
                         break;
-                    case UnlitSocket.MessageType.Data:
-                        var msg = receivedMsg.MessageData;
+                    case UnlitSocket.EventType.Data:
+                        var msg = ev.Message;
                         EnsureBufferSize(msg.Size);
                         msg.ReadBytes(receiveBuffer, 0, msg.Size);
-                        OnServerDataReceived.Invoke(receivedMsg.ConnectionId, new ArraySegment<byte>(receiveBuffer, 0, msg.Size), Channels.DefaultReliable);
+                        OnServerDataReceived.Invoke(ev.ConnectionId, new ArraySegment<byte>(receiveBuffer, 0, msg.Size), Channels.DefaultReliable);
                         msg.Release();
                         break;
-                    case UnlitSocket.MessageType.Disconnected:
-                        OnServerDisconnected.Invoke(receivedMsg.ConnectionId);
+                    case UnlitSocket.EventType.Disconnected:
+                        OnServerDisconnected.Invoke(ev.ConnectionId);
                         break;
                 }
                 processCount++;
@@ -194,7 +193,7 @@ namespace Mirror
                 if (!enabled) break;
             }
 
-            m_ServerMessageCache.RemoveRange(0, processCount);
+            m_EventCache.RemoveRange(0, processCount);
         }
 
         public override bool ServerDisconnect(int connectionId) => server.Disconnect(connectionId);

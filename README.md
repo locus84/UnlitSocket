@@ -8,6 +8,7 @@ Very Straightforward TCP network framework using SocketAsyncEventArgs.
 3. Connection count is up to your machine.(does not cache SocketAsyncEventArgs)
 4. Message buffers are devided into multiple buffers and cached. You can recycle with ease.
 5. Mirror transport support.(https://github.com/vis2k/Mirror)
+6. Receiving/sending messages are ThreadSafe.
    
 </br>
 
@@ -25,6 +26,9 @@ Useage Examples
         var port = 1090;
         var server = new Server();
         server.Start(port);
+
+        //stops accept and disconnect all
+        server.Stop();
     }
 ```
 #### Create Client and Connect
@@ -38,6 +42,18 @@ Useage Examples
         //if you want track client connected/failed
         client.Connect("localhost", port).Wait();
         var isConnected = client.Status == ConnectionStatus.Connected;
+    }
+```
+#### Disconnect
+```cs
+    public void DisconnectAClinet(Server server, int clientId)
+    {
+        server.Disconnect(clientId);
+    }
+
+    public void DisconnectFromServer(Client client)
+    {
+        client.Disconnect();
     }
 ```
 #### Sending Message
@@ -189,6 +205,12 @@ Same manner as above, Create a class implements ILogReceiver, and pass it to the
         serverOrClient.SetLogger(new CustomLogReceiver());
     }
 ```
+</br>
+
+### Using With Mirror
+Copy library source files into somewhere in your project.\
+And copy UnlitSocketTransport.cs inside UnlitSocket_Sample, either.\
+Remove **#if Unity** define in UnlitSocketTransport.cs.
 
 Declaimer(Important!)
 ===

@@ -11,6 +11,9 @@ namespace UnlitSocket_Sample
             var port = 1090;
             var server = new Server();
             server.Start(port);
+
+            //stops accept and disconnect all
+            server.Stop();
         }
 
         public void StartClient()
@@ -22,6 +25,16 @@ namespace UnlitSocket_Sample
             //if you want track client connected/failed
             client.Connect("localhost", port).Wait();
             var isConnected = client.Status == ConnectionStatus.Connected;
+        }
+
+        public void DisconnectAClinet(Server server, int clientId)
+        {
+            server.Disconnect(clientId);
+        }
+
+        public void DisconnectFromServer(Client client)
+        {
+            client.Disconnect();
         }
 
         public void SendMessageToServer(Client client)
