@@ -16,8 +16,10 @@ namespace UnlitSocket
 
         public Task Connect(string host, int port, float timeOutSec = 5f)
         {
-            if (host == "localhost") host = "127.0.0.1";
-            return Connect(new IPEndPoint(IPAddress.Parse(host), port), timeOutSec);
+            var addresses = Dns.GetHostAddresses(host);
+            if (addresses.Length == 0) throw new ArgumentException("Invalid Host");
+            var address = Dns.GetHostAddresses(host)[0];
+            return Connect(new IPEndPoint(address, port), timeOutSec);
         }
 
         public Task Connect(IPEndPoint remoteEndPoint, float timeOutSec = 5f)
@@ -60,7 +62,7 @@ namespace UnlitSocket
                 Status = ConnectionStatus.Connected;
                 m_Logger?.Debug($"Connected to server");
 
-                m_MessageHandler.OnConnected(m_Connection.ConnectionID);
+                m_EventHandler.OnConnected(m_Connection.ConnectionID);
                 StartReceive(m_Connection);
             }
             catch (Exception e)

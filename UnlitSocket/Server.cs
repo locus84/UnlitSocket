@@ -119,7 +119,7 @@ namespace UnlitSocket
 
                 conn.SetConnectedAndResetEvent();
                 m_Logger?.Debug($"Client {conn.ConnectionID} connected, Current Count : {currentNumber}");
-                m_MessageHandler.OnConnected(conn.ConnectionID);
+                m_EventHandler.OnConnected(conn.ConnectionID);
 
                 StartReceive(conn);
                 StartAccept(listenSocket, args);

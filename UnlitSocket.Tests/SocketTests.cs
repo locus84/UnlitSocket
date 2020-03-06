@@ -201,5 +201,19 @@ namespace UnlitSocket.Tests
             Assert.IsTrue(countLock.TryRetain(2));
             Assert.IsFalse(countLock.TryRetain(2));
         }
+
+        [Test]
+        public void DnsTest()
+        {
+            var addresses = System.Net.Dns.GetHostAddresses("www.naver.com");
+            var ipaddress = addresses[0];
+            Console.WriteLine(ipaddress);
+
+            ipaddress = System.Net.Dns.GetHostAddresses("localhost")[0];
+            Console.WriteLine(ipaddress);
+
+            ipaddress = System.Net.Dns.GetHostAddresses("192.168.0.10")[0];
+            Console.WriteLine(ipaddress);
+        }
     }
 }

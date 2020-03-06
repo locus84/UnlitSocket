@@ -13,21 +13,21 @@ namespace UnlitSocket
         public KeepAliveOption KeepAliveStatus = new KeepAliveOption(true, 30000, 5000);
 
         internal ConcurrentQueue<SocketArgs> m_SendArgsPool = new ConcurrentQueue<SocketArgs>();
-        internal ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages = new ThreadSafeQueue<ReceivedMessage>();
+        internal ThreadSafeQueue<Event> m_ReceivedEvents = new ThreadSafeQueue<Event>();
 
         protected ILogReceiver m_Logger;
-        protected IMessageHandler m_MessageHandler;
+        protected IEventHandler m_EventHandler;
 
         public void SetLogger(ILogReceiver logger) => m_Logger = logger;
-        public void SetHandler(IMessageHandler handler)
+        public void SetHandler(IEventHandler handler)
         {
             if (handler == null) throw new ArgumentNullException();
-            m_MessageHandler = handler;
+            m_EventHandler = handler;
         }
 
         public Peer()
         {
-            m_MessageHandler = new DefaultMessageHandler(m_ReceivedMessages);
+            m_EventHandler = new DefaultEventHandler(m_ReceivedEvents);
         }
 
         protected Connection CreateConnection(int connectionId)
@@ -119,7 +119,7 @@ namespace UnlitSocket
                 if(e.BytesTransferred > 0)
                 {
                     if (connection.TryReleaseMessage(out var message))
-                        m_MessageHandler.OnDataReceived(connection.ConnectionID, message);
+                        m_EventHandler.OnDataReceived(connection.ConnectionID, message);
                     StartReceive(connection);
                 }
                 else
@@ -141,35 +141,35 @@ namespace UnlitSocket
             conn.ClearReceiving();
             Disconnect(conn);
             //connected false can be called anywhere, but disconnect event should be called once
-            m_MessageHandler.OnDisconnected(conn.ConnectionID);
+            m_EventHandler.OnDisconnected(conn.ConnectionID);
             conn.Lock.Release();
         }
         #endregion
 
-        #region MessageHandler
+        #region EventHandler
         //default message handler, add received messages to message queue by created new ReceivedMessage
-        private class DefaultMessageHandler : IMessageHandler
+        private class DefaultEventHandler : IEventHandler
         {
-            ThreadSafeQueue<ReceivedMessage> m_ReceivedMessages;
-            public DefaultMessageHandler(ThreadSafeQueue<ReceivedMessage> messageQueue) => m_ReceivedMessages = messageQueue;
+            ThreadSafeQueue<Event> m_ReceivedEvents;
+            public DefaultEventHandler(ThreadSafeQueue<Event> eventQueue) => m_ReceivedEvents = eventQueue;
             public void OnConnected(int connectionId) =>
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Connected));
+                m_ReceivedEvents.Enqueue(new Event(connectionId, EventType.Connected));
             public void OnDataReceived(int connectionId, Message msg) =>
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Data, msg));
+                m_ReceivedEvents.Enqueue(new Event(connectionId, EventType.Data, msg));
             public void OnDisconnected(int connectionId) =>
-                m_ReceivedMessages.Enqueue(new ReceivedMessage(connectionId, MessageType.Disconnected));
+                m_ReceivedEvents.Enqueue(new Event(connectionId, EventType.Disconnected));
         }
 
-        public bool GetNextMessage(out ReceivedMessage message)
+        public bool TryGetNextEvent(out Event message)
         {
-            return m_ReceivedMessages.TryDequeue(out message);
+            return m_ReceivedEvents.TryDequeue(out message);
         }
 
-        public void GetNextMessages(List<ReceivedMessage> messageCache)
+        public void GetNextEvents(List<Event> messageCache)
         {
             //don't clear message cache, as client should handle on their own
             //messageCache.Clear();
-            m_ReceivedMessages.DequeueAll(messageCache);
+            m_ReceivedEvents.DequeueAll(messageCache);
         }
         #endregion
 

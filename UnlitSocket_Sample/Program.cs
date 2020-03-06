@@ -112,22 +112,22 @@ namespace UnlitSocket_Sample
 
         private static void Update(Peer peer)
         {
-            ReceivedMessage message;
-            while(peer.GetNextMessage(out message))
+            Event message;
+            while(peer.TryGetNextEvent(out message))
             {
                 switch(message.Type)
                 {
-                    case MessageType.Connected:
+                    case EventType.Connected:
                         Console.WriteLine($"Connection : {message.ConnectionId} - Connected");
                         break;
-                    case MessageType.Disconnected:
+                    case EventType.Disconnected:
                         Console.WriteLine($"Connection : {message.ConnectionId} - Disconnected");
                         break;
-                    case MessageType.Data:
+                    case EventType.Data:
                         Console.WriteLine($"Connection : {message.ConnectionId} - Data");
-                        var receivedMsg = message.MessageData.ReadString();
+                        var receivedMsg = message.Message.ReadString();
                         if (receivedMsg == "exit" && peer is Server serverPeer) serverPeer.Disconnect(message.ConnectionId);
-                        message.MessageData.Release();
+                        message.Message.Release();
                         break;
                 }
             }

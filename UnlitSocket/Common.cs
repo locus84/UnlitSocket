@@ -7,9 +7,9 @@ using System.Threading;
 namespace UnlitSocket
 {
     public enum ConnectionStatus { Disconnected, Connecting, Connected }
-    public enum MessageType { Connected, Disconnected, Data }
+    public enum EventType { Connected, Disconnected, Data }
 
-    public interface IMessageHandler
+    public interface IEventHandler
     {
         void OnConnected(int connectionId);
         void OnDisconnected(int connectionId);
@@ -36,16 +36,16 @@ namespace UnlitSocket
         }
     }
 
-    public struct ReceivedMessage
+    public struct Event
     {
         public int ConnectionId;
-        public MessageType Type;
-        public Message MessageData;
-        public ReceivedMessage(int connectionId, MessageType type, Message message = null)
+        public EventType Type;
+        public Message Message;
+        public Event(int connectionId, EventType type, Message message = null)
         {
             ConnectionId = connectionId;
             Type = type;
-            MessageData = message;
+            Message = message;
         }
     }
 
