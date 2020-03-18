@@ -153,6 +153,29 @@ namespace UnlitSocket
         {
             WriteBytes(segment.Array, segment.Offset, segment.Count);
         }
+        
+        public void WriteMessage(Message msg)
+        {
+            //empty message
+            if (msg.Position == 0) return;
+
+            var countLeft = msg.Position;
+            for(int i = 0; i < msg.m_InnerDatas.Count; i++)
+            {
+                var data = msg.m_InnerDatas[i];
+                if (data.Length > countLeft)
+                {
+                    WriteBytes(data, 0, data.Length);
+                    countLeft -= data.Length;
+                }
+                else
+                {
+                    WriteBytes(data, 0, countLeft);
+                    break;
+                }
+            }
+        }
+
 
         public void Clear()
         {
