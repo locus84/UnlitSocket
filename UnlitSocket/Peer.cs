@@ -40,6 +40,10 @@ namespace UnlitSocket
         }
 
         #region SendHandler
+        public abstract bool Send(int connectionId, Message message);
+
+        public abstract bool Send(IList<int> connectionIds, Message message);
+
         /// <summary>
         /// message must be retained before calling this function
         /// </summary>

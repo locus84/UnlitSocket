@@ -139,7 +139,7 @@ namespace UnlitSocket
         /// <summary>
         /// Send to multiple recipients without creating multiple Message object
         /// </summary>
-        public bool Send(IList<int> recipients, Message message)
+        public override bool Send(IList<int> recipients, Message message)
         {
             for (int i = 0; i < recipients.Count; i++)
             {
@@ -155,7 +155,7 @@ namespace UnlitSocket
         /// <summary>
         /// Send to one client
         /// </summary>
-        public bool Send(int connectionID, Message message)
+        public override bool Send(int connectionID, Message message)
         {
             if (message.Position == 0)
             {

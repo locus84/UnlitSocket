@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
@@ -75,6 +76,17 @@ namespace UnlitSocket
                 //receive has not been started, so we signal manually
                 m_Connection.Lock.Release();
             }
+        }
+
+        public override bool Send(int connectionId, Message message)
+        {
+            //doesn't matter connectionId.
+            return Send(message);
+        }
+
+        public override bool Send(IList<int> connectionIds, Message message)
+        {
+            throw new NotSupportedException("client does not suuport multiple connection send");
         }
 
         /// <summary>
