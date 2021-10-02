@@ -22,10 +22,10 @@ namespace UnlitSocket
 
         public static void RunRecommanded()
         {
-            SetOpenFileLimit(65535);
-            SystemControl("net.core.netdev_max_backlog", 30000);
-            SystemControl("net.core.somaxconn", 1024);
-            SystemControl("net.ipv4.tcp_max_syn_backlog", 1024);
+            // SetOpenFileLimit(65535);
+            // SystemControl("net.core.netdev_max_backlog", 30000);
+            // SystemControl("net.core.somaxconn", 1024);
+            // SystemControl("net.ipv4.tcp_max_syn_backlog", 1024);
         }
 
         public static void Bash(string cmd)
